@@ -108,9 +108,8 @@ async def start_handler(event):
         f"👇 _Bạn có thể bấm vào Menu bên dưới hoặc các nút chọn nhanh:_"
     )
 
-    # Gửi tin nhắn có cả nút Inline trong tin nhắn và Menu phím bấm ở dưới
-    await event.respond(welcome_text, buttons=get_reply_keyboard(user_id))
-    await event.respond("✨ **BẢNG ĐIỀU KHIỂN NHANH:**", buttons=get_main_menu_buttons(user_id))
+    # Gửi duy nhất 1 tin nhắn chào mừng kèm nút chọn nhanh
+    await event.respond(welcome_text, buttons=get_main_menu_buttons(user_id))
 
 @client.on(events.NewMessage(pattern=r"^(/products|🛍️ Bảng Giá Sản Phẩm)$"))
 async def products_command_handler(event):
