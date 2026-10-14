@@ -127,41 +127,48 @@ def get_reply_keyboard(user_id: int):
 
 # ==================== CÁC SỰ KIỆN LỆNH TELEGRAM & NÚT BÀN PHÍM DƯỚI ====================
 
-@client.on(events.NewMessage(pattern=r"^/start"))
+@client.on(events.NewMessage(pattern=r"(?i)^/start"))
 async def start_handler(event):
-    sender = await event.get_sender()
-    user_id = sender.id
-    username = sender.username or ""
-    first_name = sender.first_name or "Khách hàng"
+    try:
+        sender = await event.get_sender()
+        user_id = sender.id if sender else event.sender_id
+        username = (sender.username if sender else "") or ""
+        first_name = (sender.first_name if sender else "Khách hàng") or "Khách hàng"
 
-    # Lưu thông tin khách hàng
-    db.get_or_create_user(user_id, username, first_name)
-    user_states.pop(user_id, None)
+        # Lưu thông tin khách hàng
+        db.get_or_create_user(user_id, username, first_name)
+        user_states.pop(user_id, None)
 
-    # 1. KIỂM TRA ĐIỀU KIỆN VÀO NHÓM CỘNG ĐỒNG (HẠN 7 NGÀY)
-    if not is_admin(user_id) and not db.is_group_verified(user_id):
-        is_member = await check_user_in_group(user_id)
-        if not is_member:
-            prompt_text, buttons = get_join_group_prompt(user_id)
-            await event.respond(prompt_text, buttons=buttons)
-            return
+        # 1. KIỂM TRA ĐIỀU KIỆN VÀO NHÓM CỘNG ĐỒNG (HẠN 7 NGÀY)
+        if not is_admin(user_id) and not db.is_group_verified(user_id):
+            is_member = await check_user_in_group(user_id)
+            if not is_member:
+                prompt_text, buttons = get_join_group_prompt(user_id)
+                await event.respond(prompt_text, buttons=buttons)
+                return
 
-    welcome_text = (
-        f"👋 **Chào mừng {first_name} đến với Shop Dịch Vụ Bản Quyền!**\n\n"
-        f"🌟 **ƯU ĐÃI ĐẶC BIỆT HÔM NAY:**\n"
-        f"🎁 Nhận ngay gói **Locket Gold Free 0đ** trải nghiệm đầy đủ tính năng!\n\n"
-        f"💎 **DANH MỤC DỊCH VỤ NỔI BẬT:**\n"
-        f"• 💛 **Locket Gold 2 Năm:** 80.000đ\n"
-        f"• 🎨 **Canva Pro Edu 12 Tháng:** 40.000đ\n"
-        f"• 👑 **Admin Canva Pro Edu 2 Năm:** 120.000đ\n"
-        f"• 🤖 **Gemini Pro 18 Tháng:** 200.000đ\n\n"
-        f"⚡ **Tất cả dịch vụ đều có bảo hành 1 đổi 1 & hỗ trợ 24/7!**\n"
-        f"👇 _Chọn chức năng bên dưới để bắt đầu:_"
-    )
+        welcome_text = (
+            f"👋 **Chào mừng {first_name} đến với Shop Dịch Vụ Bản Quyền!**\n\n"
+            f"🌟 **ƯU ĐÃI ĐẶC BIỆT HÔM NAY:**\n"
+            f"🎁 Nhận ngay gói **Locket Gold Free 0đ** trải nghiệm đầy đủ tính năng!\n\n"
+            f"💎 **DANH MỤC DỊCH VỤ NỔI BẬT:**\n"
+            f"• 💛 **Locket Gold 2 Năm:** 80.000đ\n"
+            f"• 🎨 **Canva Pro Edu 12 Tháng:** 40.000đ\n"
+            f"• 👑 **Admin Canva Pro Edu 2 Năm:** 120.000đ\n"
+            f"• 🤖 **Gemini Pro 18 Tháng:** 200.000đ\n\n"
+            f"⚡ **Tất cả dịch vụ đều có bảo hành 1 đổi 1 & hỗ trợ 24/7!**\n"
+            f"👇 _Chọn chức năng bên dưới để bắt đầu:_"
+        )
 
-    # Gửi menu inline kèm bàn phím dưới đáy 1 hàng siêu nhỏ gọn
-    await event.respond(welcome_text, buttons=get_reply_keyboard(user_id))
-    await event.respond("✨ **BẢNG CHỨC NĂNG:**", buttons=get_main_menu_buttons(user_id))
+        # Gửi menu inline kèm bàn phím dưới đáy 1 hàng siêu nhỏ gọn
+        await event.respond(welcome_text, buttons=get_reply_keyboard(user_id))
+        await event.respond("✨ **BẢNG CHỨC NĂNG:**", buttons=get_main_menu_buttons(user_id))
+    except Exception as e:
+        logger.error(f"Lỗi khi xử lý lệnh /start: {e}")
+        try:
+            await event.respond("⚠️ Đang tải lại hệ thống, vui lòng thử lại sau giây lát!")
+        except Exception:
+            pass
 
 @client.on(events.NewMessage(pattern=r"^(/products|🛍️ Bảng Giá Sản Phẩm|🛍️ Bảng Giá)$"))
 async def products_command_handler(event):
