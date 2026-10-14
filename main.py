@@ -48,8 +48,8 @@ def format_money(amount: int) -> str:
 
 def get_main_menu_buttons(user_id: int):
     buttons = [
-        # Nút WebApp mở trực tiếp cửa sổ Mini App Nghiện Trick trên Telegram
-        [KeyboardButtonWebView("🎁 Nhận Locket Gold Free", "https://nghientrick.com/privacy.html")],
+        # Nút mở trực tiếp Telegram Mini App của Nghiện Trick
+        [Button.url("🎁 Nhận Locket Gold Free", "https://t.me/nghientrickshop_bot?startapp")],
         [
             Button.inline("🛍️ Bảng Giá Sản Phẩm", b"menu_products"),
             Button.inline("📋 Đơn Hàng Của Tôi", b"my_orders")
@@ -278,7 +278,7 @@ async def callback_handler(event):
         )
 
         if prod["price"] == 0:
-            action_btn = KeyboardButtonWebView("🎁 Nhận Locket Gold Free", "https://nghientrick.com/privacy.html")
+            action_btn = Button.url("🎁 Nhận Locket Gold Free", "https://t.me/nghientrickshop_bot?startapp")
         else:
             action_btn = Button.inline(f"🛒 Mua Ngay ({format_money(prod['price'])})", f"order_{prod['id']}".encode())
 
