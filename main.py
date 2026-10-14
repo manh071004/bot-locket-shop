@@ -136,34 +136,16 @@ async def products_command_handler(event):
 
 @client.on(events.NewMessage(pattern=r"^(/free|🎁 Nhận Locket Free 0đ)$"))
 async def free_command_handler(event):
-    sender = await event.get_sender()
-    user_id = sender.id
-    prod = get_product_by_id("locket_free")
-    if not prod:
-        await event.respond("⚠️ Gói khuyến mãi tạm thời chưa sẵn sàng.")
-        return
-
-    if db.has_claimed_free(user_id, prod["id"]):
-        await event.respond(
-            "⚠️ **Bạn đã nhận gói Locket Gold Miễn Phí rồi!**\n"
-            "Mỗi khách hàng chỉ được nhận 1 lần. Bạn có thể tham khảo gói Locket Gold 2 Năm chính chủ nhé!",
-            buttons=get_products_menu_buttons()
-        )
-        return
-
-    user_states[user_id] = {
-        "step": "waiting_input",
-        "product_id": "locket_free",
-        "expires_at": time.time() + TIMEOUT_INPUT_SECONDS
-    }
-
-    prompt_text = (
-        f"📝 **BƯỚC ĐẶT HÀNG: {prod['name']}**\n\n"
-        f"💰 **Giá thanh toán:** `0 VNĐ (MIỄN PHÍ)`\n"
-        f"👉 **Yêu cầu:** {prod.get('input_prompt', 'Vui lòng nhập Email hoặc Username Locket của bạn:')}\n\n"
-        f"⏱️ _Thời gian thao tác: {TIMEOUT_INPUT_SECONDS // 60} phút. Vui lòng gửi tin nhắn trả lời trực tiếp bên dưới!_"
+    text = (
+        "🎁 **NHẬN LOCKET GOLD MIỄN PHÍ (0Đ)**\n\n"
+        "✨ Bạn chỉ cần bấm vào nút bên dưới để mở ứng dụng nhận Locket Gold Free ngay lập tức mà không cần nhập Email hay thủ tục phức tạp nào cả!\n\n"
+        "👇 _Bấm nút bên dưới để nhận ngay:_"
     )
-    await event.respond(prompt_text, buttons=[[Button.inline("❌ Hủy Bỏ", b"cancel_order")]])
+    buttons = [
+        [Button.url("🚀 MỞ APP NHẬN LOCKET GOLD FREE", "https://t.me/nghientrickshop_bot?startapp")],
+        [Button.inline("⬅️ Quay Lại Menu Chính", b"menu_main")]
+    ]
+    await event.respond(text, buttons=buttons)
 
 @client.on(events.NewMessage(pattern=r"^(/orders|📋 Đơn Hàng Của Tôi)$"))
 async def orders_command_handler(event):
