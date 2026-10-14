@@ -58,7 +58,11 @@ BANK_ID = os.getenv("BANK_ID", "MB").strip()
 BANK_ACCOUNT = os.getenv("BANK_ACCOUNT", "").strip()
 BANK_ACCOUNT_NAME = os.getenv("BANK_ACCOUNT_NAME", "").strip()
 
+# Cấu hình nhóm cộng đồng (Bắt buộc tham gia mới được dùng bot)
+GROUP_ID_RAW = os.getenv("ADD_GROUP_ID", "-1004421532300").strip()
+GROUP_ID = int(GROUP_ID_RAW) if (GROUP_ID_RAW.startswith("-") and GROUP_ID_RAW[1:].isdigit()) or GROUP_ID_RAW.isdigit() else 0
+GROUP_INVITE_LINK = os.getenv("GROUP_INVITE_LINK", "https://t.me/+PKNc6WOF6YcwNzE1").strip()
 # Cấu hình thời gian chờ (Timeout)
-TIMEOUT_INPUT_SECONDS = int(os.getenv("TIMEOUT_INPUT_SECONDS", 180)) # 3 phút cho nhập liệu (theo yêu cầu KI)
+TIMEOUT_INPUT_SECONDS = int(os.getenv("TIMEOUT_INPUT_SECONDS", 180)) # 3 phút cho nhập liệu
 TIMEOUT_PAYMENT_SECONDS = int(os.getenv("TIMEOUT_PAYMENT_SECONDS", 600)) # 10 phút cho thanh toán
 BACKUP_INTERVAL_HOURS = int(os.getenv("BACKUP_INTERVAL_HOURS", 12)) # Tự động sao lưu mỗi 12 giờ

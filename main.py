@@ -17,6 +17,8 @@ from config import (
     TIMEOUT_INPUT_SECONDS,
     TIMEOUT_PAYMENT_SECONDS,
     BACKUP_INTERVAL_HOURS,
+    GROUP_ID,
+    GROUP_INVITE_LINK,
     logger
 )
 import database
@@ -46,10 +48,47 @@ def format_money(amount: int) -> str:
 
 # ==================== GIAO DIỆN CHÍNH & HELPER ====================
 
+# ==================== HÀM KIỂM TRA THAM GIA NHÓM & QUẢNG CÁO ====================
+
+async def check_user_in_group(user_id: int) -> bool:
+    """Kiểm tra xem người dùng đã thực sự tham gia nhóm cộng đồng chưa"""
+    if is_admin(user_id):
+        return True
+    if not GROUP_ID:
+        return True
+    try:
+        participant = await client.get_permissions(GROUP_ID, user_id)
+        if participant and (participant.is_admin or participant.participant):
+            db.set_group_verified(user_id)
+            return True
+        return False
+    except Exception as e:
+        # Nếu bot chưa có quyền trong nhóm hoặc chưa lấy được Peer, cho phép qua nếu đã ấn xác nhận
+        logger.warning(f"Kiểm tra thành viên nhóm lỗi/fallback: {e}")
+        return db.is_group_verified(user_id)
+
+def get_join_group_prompt(user_id: int):
+    """Thông báo bắt buộc tham gia nhóm cộng đồng kèm nút xác minh"""
+    text = (
+        "📢 **THÔNG BÁO TỪ HỆ THỐNG SHOP BẢN QUYỀN**\n\n"
+        "Chào bạn! Để tiếp tục sử dụng bot và nhận các chương trình ưu đãi, giảm giá sốc, "
+        "bạn vui lòng **tham gia nhóm cộng đồng chính thức** của chúng tôi nhé!\n\n"
+        "👉 **Bước 1:** Bấm nút **'👉 Tham Gia Nhóm Ngay'** bên dưới.\n"
+        "👉 **Bước 2:** Bấm nút **'✅ Tôi Đã Vào Nhóm'** để bot quét và mở khóa toàn bộ tính năng.\n\n"
+        "_(Mỗi tuần hệ thống sẽ kiểm tra định kỳ 1 lần để đảm bảo bạn không bỏ lỡ các ưu đãi quà tặng mới nhất)_"
+    )
+    buttons = [
+        [Button.url("👉 Tham Gia Nhóm Cộng Đồng", GROUP_INVITE_LINK)],
+        [Button.inline("✅ Tôi Đã Vào Nhóm (Xác Minh)", b"verify_joined_group")]
+    ]
+    return text, buttons
+
+# ==================== GIAO DIỆN CHÍNH & HELPER ====================
+
 def get_main_menu_buttons(user_id: int):
     buttons = [
-        # Nút mở trực tiếp Telegram Mini App của Nghiện Trick
-        [Button.url("🎁 Nhận Locket Gold Free", "https://t.me/nghientrickshop_bot?startapp")],
+        # Nút chuyển tới luồng nhận Locket Gold Free (Yêu cầu mời bạn bè)
+        [Button.inline("🎁 Nhận Locket Gold Free (0đ)", b"start_locket_free_flow")],
         [
             Button.inline("🛍️ Bảng Giá Sản Phẩm", b"menu_products"),
             Button.inline("📋 Đơn Hàng Của Tôi", b"my_orders")
@@ -76,21 +115,14 @@ def get_products_menu_buttons():
     return rows
 
 def get_reply_keyboard(user_id: int):
-    """Bàn phím Menu cố định dưới thanh nhập tin nhắn được thu nhỏ gọn gàng (resize=True)"""
+    """Bàn phím dưới đáy 1 hàng 3 nút siêu mảnh mai, nhỏ gọn không chiếm màn hình"""
     kb_rows = [
         KeyboardButtonRow([
-            KeyboardButton("🎁 Nhận Locket Free 0đ"),
-            KeyboardButton("🛍️ Bảng Giá Sản Phẩm")
-        ]),
-        KeyboardButtonRow([
-            KeyboardButton("📋 Đơn Hàng Của Tôi"),
-            KeyboardButton("💬 Hỗ Trợ 24/7")
+            KeyboardButton("🎁 Locket Free"),
+            KeyboardButton("🛍️ Bảng Giá"),
+            KeyboardButton("📋 Đơn Hàng")
         ])
     ]
-    if is_admin(user_id):
-        kb_rows.append(KeyboardButtonRow([
-            KeyboardButton("👑 Bảng Điều Khiển Admin")
-        ]))
     return ReplyKeyboardMarkup(rows=kb_rows, resize=True)
 
 # ==================== CÁC SỰ KIỆN LỆNH TELEGRAM & NÚT BÀN PHÍM DƯỚI ====================
@@ -106,6 +138,14 @@ async def start_handler(event):
     db.get_or_create_user(user_id, username, first_name)
     user_states.pop(user_id, None)
 
+    # 1. KIỂM TRA ĐIỀU KIỆN VÀO NHÓM CỘNG ĐỒNG (HẠN 7 NGÀY)
+    if not is_admin(user_id) and not db.is_group_verified(user_id):
+        is_member = await check_user_in_group(user_id)
+        if not is_member:
+            prompt_text, buttons = get_join_group_prompt(user_id)
+            await event.respond(prompt_text, buttons=buttons)
+            return
+
     welcome_text = (
         f"👋 **Chào mừng {first_name} đến với Shop Dịch Vụ Bản Quyền!**\n\n"
         f"🌟 **ƯU ĐÃI ĐẶC BIỆT HÔM NAY:**\n"
@@ -116,14 +156,23 @@ async def start_handler(event):
         f"• 👑 **Admin Canva Pro Edu 2 Năm:** 120.000đ\n"
         f"• 🤖 **Gemini Pro 18 Tháng:** 200.000đ\n\n"
         f"⚡ **Tất cả dịch vụ đều có bảo hành 1 đổi 1 & hỗ trợ 24/7!**\n"
-        f"👇 _Bạn có thể bấm vào Menu bên dưới hoặc các nút chọn nhanh:_"
+        f"👇 _Chọn chức năng bên dưới để bắt đầu:_"
     )
 
-    # Gửi duy nhất 1 tin nhắn chào mừng kèm các nút bấm inline gọn gàng, ẩn sạch bàn phím to dưới đáy
-    await event.respond(welcome_text, buttons=get_main_menu_buttons(user_id))
+    # Gửi menu inline kèm bàn phím dưới đáy 1 hàng siêu nhỏ gọn
+    await event.respond(welcome_text, buttons=get_reply_keyboard(user_id))
+    await event.respond("✨ **BẢNG CHỨC NĂNG:**", buttons=get_main_menu_buttons(user_id))
 
-@client.on(events.NewMessage(pattern=r"^(/products|🛍️ Bảng Giá Sản Phẩm)$"))
+@client.on(events.NewMessage(pattern=r"^(/products|🛍️ Bảng Giá Sản Phẩm|🛍️ Bảng Giá)$"))
 async def products_command_handler(event):
+    user_id = event.sender_id
+    if not is_admin(user_id) and not db.is_group_verified(user_id):
+        is_member = await check_user_in_group(user_id)
+        if not is_member:
+            prompt_text, buttons = get_join_group_prompt(user_id)
+            await event.respond(prompt_text, buttons=buttons)
+            return
+
     text = (
         "🛍️ **BẢNG GIÁ DỊCH VỤ BẢN QUYỀN CHÍNH HÃNG**\n\n"
         "1. 🎁 **Locket Gold Miễn Phí:** `0 VNĐ`\n"
@@ -135,18 +184,53 @@ async def products_command_handler(event):
     )
     await event.respond(text, buttons=get_products_menu_buttons())
 
-@client.on(events.NewMessage(pattern=r"^(/free|🎁 Nhận Locket Free 0đ)$"))
-async def free_command_handler(event):
-    text = (
-        "🎁 **NHẬN LOCKET GOLD MIỄN PHÍ (0Đ)**\n\n"
-        "✨ Bạn chỉ cần bấm vào nút bên dưới để mở ứng dụng nhận Locket Gold Free ngay lập tức mà không cần nhập Email hay thủ tục phức tạp nào cả!\n\n"
-        "👇 _Bấm nút bên dưới để nhận ngay:_"
+async def send_locket_free_referral_flow(event, user_id: int):
+    """Xử lý hiển thị luồng nhận Locket Gold Free theo điều kiện giới thiệu bạn bè"""
+    user_data = db.get_or_create_user(user_id)
+    friend_id = user_data.get("referred_friend_id")
+
+    if friend_id:
+        # Đã đủ điều kiện: hiển thị trực tiếp nút mở ứng dụng
+        text_success = (
+            "🎉 **CHÚC MỪNG BẠN ĐÃ ĐỦ ĐIỀU KIỆN!**\n\n"
+            "✅ Bạn đã hoàn thành nhiệm vụ giới thiệu bạn bè và tham gia nhóm cộng đồng.\n"
+            "👇 Bấm nút bên dưới để mở ứng dụng nhận Locket Gold Free ngay lập tức:"
+        )
+        buttons = [
+            [Button.url("🚀 MỞ APP NHẬN LOCKET GOLD FREE", "https://t.me/nghientrickshop_bot?startapp")],
+            [Button.inline("⬅️ Về Menu Chính", b"menu_main")]
+        ]
+        await event.respond(text_success, buttons=buttons)
+        return
+
+    # Chưa đủ điều kiện: yêu cầu giới thiệu bạn bè
+    ref_text = (
+        "🎁 **ĐIỀU KIỆN NHẬN LOCKET GOLD FREE (0Đ)**\n\n"
+        "Để tránh spam và nhận link ứng dụng Locket Gold Free, bạn chỉ cần thực hiện nhiệm vụ sau:\n\n"
+        "1️⃣ **Giới thiệu 1 người bạn** (hoặc dùng 1 tài khoản phụ/clone của bạn):\n"
+        "   • Người bạn đó phải bấm vào bot và gửi lệnh `/start`\n"
+        "   • Người bạn đó phải tham gia nhóm cộng đồng của shop.\n\n"
+        "2️⃣ Sau đó bạn bấm nút **'✍️ Nhập Username Người Bạn'** bên dưới để bot quét kiểm tra.\n\n"
+        "💡 **Mẹo nhỏ:** Bạn có thể tự tạo 1 tài khoản Telegram phụ (clone), hoặc nhờ người thân/bạn bè bấm vào bot là xong ngay trong 1 phút!\n"
+        "⚠️ _Mỗi tài khoản bạn bè chỉ được tính hợp lệ cho 1 người giới thiệu duy nhất (hệ thống lưu ID cố định chống gian lận)._"
     )
     buttons = [
-        [Button.url("🚀 MỞ APP NHẬN LOCKET GOLD FREE", "https://t.me/nghientrickshop_bot?startapp")],
-        [Button.inline("⬅️ Quay Lại Menu Chính", b"menu_main")]
+        [Button.inline("✍️ Nhập Username Người Bạn Đã Mời", b"enter_referral_friend")],
+        [Button.inline("⬅️ Quay Lại Menu", b"menu_main")]
     ]
-    await event.respond(text, buttons=buttons)
+    await event.respond(ref_text, buttons=buttons)
+
+@client.on(events.NewMessage(pattern=r"^(/free|🎁 Nhận Locket Free 0đ|🎁 Locket Free)$"))
+async def free_command_handler(event):
+    user_id = event.sender_id
+    if not is_admin(user_id) and not db.is_group_verified(user_id):
+        is_member = await check_user_in_group(user_id)
+        if not is_member:
+            prompt_text, buttons = get_join_group_prompt(user_id)
+            await event.respond(prompt_text, buttons=buttons)
+            return
+
+    await send_locket_free_referral_flow(event, user_id)
 
 @client.on(events.NewMessage(pattern=r"^(/orders|📋 Đơn Hàng Của Tôi)$"))
 async def orders_command_handler(event):
@@ -261,7 +345,7 @@ async def callback_handler(event):
         )
 
         if prod["price"] == 0:
-            action_btn = Button.url("🎁 Nhận Locket Gold Free", "https://t.me/nghientrickshop_bot?startapp")
+            action_btn = Button.inline("🎁 Bấm Để Nhận Miễn Phí (0đ)", b"start_locket_free_flow")
         else:
             action_btn = Button.inline(f"🛒 Mua Ngay ({format_money(prod['price'])})", f"order_{prod['id']}".encode())
 
@@ -273,6 +357,87 @@ async def callback_handler(event):
             await event.edit(detail_text, buttons=buttons)
         except MessageNotModifiedError:
             pass
+        await event.answer()
+        return
+
+    # XÁC MINH VÀO NHÓM CỘNG ĐỒNG
+    if data == "verify_joined_group":
+        is_member = await check_user_in_group(user_id)
+        if is_member:
+            db.set_group_verified(user_id)
+            await event.answer("🎉 Tuyệt vời! Bạn đã xác minh vào nhóm thành công.", alert=True)
+            welcome_text = (
+                f"🎉 **XÁC MINH THÀNH CÔNG!**\n\n"
+                f"Cảm ơn bạn đã tham gia nhóm cộng đồng. Mọi chức năng và ưu đãi của bot đã được mở khóa!\n"
+                f"👇 _Chọn chức năng bên dưới để tiếp tục:_"
+            )
+            try:
+                await event.edit(welcome_text, buttons=get_main_menu_buttons(user_id))
+            except Exception:
+                await event.respond(welcome_text, buttons=get_main_menu_buttons(user_id))
+        else:
+            await event.answer("⚠️ Bot kiểm tra bạn VẪN CHƯA vào nhóm! Vui lòng bấm '👉 Tham Gia Nhóm Ngay' trước nhé.", alert=True)
+        return
+
+    # LUỒNG NHẬN LOCKET GOLD FREE: YÊU CẦU GIỚI THIỆU BẠN BÈ
+    if data == "start_locket_free_flow":
+        # Kiểm tra nếu user này đã hoàn thành giới thiệu bạn bè chưa
+        user_data = db.get_or_create_user(user_id)
+        friend_id = user_data.get("referred_friend_id")
+
+        if friend_id:
+            # ĐÃ ĐỦ ĐIỀU KIỆN: HIỂN THỊ TRỰC TIẾP NÚT CHUYỂN ĐẾN APP
+            text_success = (
+                "🎉 **CHÚC MỪNG BẠN ĐÃ ĐỦ ĐIỀU KIỆN!**\n\n"
+                "✅ Bạn đã hoàn thành nhiệm vụ giới thiệu bạn bè và tham gia nhóm cộng đồng.\n"
+                "👇 Bấm nút bên dưới để mở ứng dụng nhận Locket Gold Free ngay lập tức:"
+            )
+            buttons = [
+                [Button.url("🚀 MỞ APP NHẬN LOCKET GOLD FREE", "https://t.me/nghientrickshop_bot?startapp")],
+                [Button.inline("⬅️ Về Menu Chính", b"menu_main")]
+            ]
+            try:
+                await event.edit(text_success, buttons=buttons)
+            except Exception:
+                await event.respond(text_success, buttons=buttons)
+            await event.answer()
+            return
+
+        # CHƯA ĐỦ ĐIỀU KIỆN: ĐƯA RA NHIỆM VỤ GIỚI THIỆU BẠN BÈ
+        ref_text = (
+            "🎁 **ĐIỀU KIỆN NHẬN LOCKET GOLD FREE (0Đ)**\n\n"
+            "Để tránh spam và nhận link ứng dụng Locket Gold Free, bạn chỉ cần thực hiện nhiệm vụ sau:\n\n"
+            "1️⃣ **Giới thiệu 1 người bạn** (hoặc dùng 1 tài khoản phụ/clone của bạn):\n"
+            "   • Người bạn đó phải bấm vào bot và gửi lệnh `/start`\n"
+            "   • Người bạn đó phải tham gia nhóm cộng đồng của shop.\n\n"
+            "2️⃣ Sau đó bạn bấm nút **'✍️ Nhập Username Người Bạn'** bên dưới để bot quét kiểm tra.\n\n"
+            "💡 **Mẹo nhỏ:** Bạn có thể tự tạo 1 tài khoản Telegram phụ (clone), hoặc nhờ người thân/bạn bè bấm vào bot là xong ngay trong 1 phút!\n"
+            "⚠️ _Mỗi tài khoản bạn bè chỉ được tính hợp lệ cho 1 người giới thiệu duy nhất (hệ thống lưu ID cố định chống gian lận)._"
+        )
+        buttons = [
+            [Button.inline("✍️ Nhập Username Người Bạn Đã Mời", b"enter_referral_friend")],
+            [Button.inline("⬅️ Quay Lại Menu", b"menu_main")]
+        ]
+        try:
+            await event.edit(ref_text, buttons=buttons)
+        except Exception:
+            await event.respond(ref_text, buttons=buttons)
+        await event.answer()
+        return
+
+    # BẮT ĐẦU NHẬP USERNAME BẠN BÈ
+    if data == "enter_referral_friend":
+        user_states[user_id] = {
+            "step": "waiting_referral_username",
+            "expires_at": time.time() + TIMEOUT_INPUT_SECONDS
+        }
+        prompt = (
+            "✍️ **NHẬP THÔNG TIN NGƯỜI BẠN BẠN ĐÃ MỜI**\n\n"
+            "Vui lòng gửi **@username** (hoặc ID Telegram) của người bạn đã mời vào tin nhắn này:\n\n"
+            "_(Ví dụ: `@manh0710` hoặc `manh0710`)_\n"
+            "⏱️ _Thời gian thao tác: 3 phút._"
+        )
+        await event.respond(prompt, buttons=[[Button.inline("❌ Hủy Bỏ", b"cancel_order")]])
         await event.answer()
         return
 
@@ -548,6 +713,92 @@ async def message_input_handler(event):
         return
 
     step = state.get("step")
+
+    # XỬ LÝ NHẬP USERNAME / ID BẠN BÈ ĐỂ NHẬN LOCKET GOLD FREE
+    if step == "waiting_referral_username":
+        referral_query = event.raw_text.strip()
+        user_states.pop(user_id, None)
+
+        # 1. Không được tự nhập username/ID của chính mình
+        sender = await event.get_sender()
+        my_username = (sender.username or "").lower()
+        clean_input = referral_query.lstrip("@").lower()
+
+        if clean_input == str(user_id) or (my_username and clean_input == my_username):
+            await event.respond(
+                "❌ **Không hợp lệ:** Bạn không thể tự nhập tài khoản của chính mình!\n"
+                "👉 Hãy nhờ bạn bè hoặc dùng 1 tài khoản clone khác để mời nhé.",
+                buttons=[[Button.inline("🔄 Thử Lại", b"enter_referral_friend")], [Button.inline("⬅️ Về Menu", b"menu_main")]]
+            )
+            return
+
+        # 2. Tìm người bạn này trong hệ thống bot (họ phải bấm /start bot trước)
+        friend = db.find_user_by_username_or_id(referral_query)
+        if not friend:
+            await event.respond(
+                f"⚠️ **Không tìm thấy tài khoản `{referral_query}` trong hệ thống bot!**\n\n"
+                "📌 **Nguyên nhân:** Người bạn này chưa từng bấm `/start` tương tác với bot.\n"
+                "👉 **Cách giải quyết:** Hãy gửi link bot cho bạn bè (hoặc tài khoản clone) của bạn, bấm `/start` rồi vào đây nhập lại nhé!",
+                buttons=[[Button.inline("🔄 Thử Lại", b"enter_referral_friend")], [Button.inline("⬅️ Về Menu", b"menu_main")]]
+            )
+            return
+
+        friend_id = friend["id"]
+        friend_name = friend.get("username") or friend.get("first_name") or str(friend_id)
+
+        # 3. Kiểm tra xem người bạn này đã từng được ai điền trước đó chưa (Chống gian lận 1 người dùng cho nhiều nick)
+        if db.is_friend_already_used_as_referral(friend_id):
+            await event.respond(
+                f"❌ **Tài khoản @{friend_name} đã được người khác sử dụng để nhận thưởng trước đó!**\n\n"
+                "⚠️ Hệ thống quy định mỗi tài khoản giới thiệu chỉ được tính điểm cho 1 người duy nhất để đảm bảo công bằng.\n"
+                "👉 Vui lòng giới thiệu một người bạn khác hoặc dùng tài khoản clone khác.",
+                buttons=[[Button.inline("🔄 Thử Tài Khoản Khác", b"enter_referral_friend")], [Button.inline("⬅️ Về Menu", b"menu_main")]]
+            )
+            return
+
+        # 4. Kiểm tra xem người bạn này đã tham gia nhóm cộng đồng chưa
+        friend_in_group = await check_user_in_group(friend_id)
+        if not friend_in_group:
+            await event.respond(
+                f"⚠️ **Tài khoản @{friend_name} CHƯA tham gia nhóm cộng đồng của shop!**\n\n"
+                "👉 Hãy nhắc người bạn đó bấm vào link nhóm cộng đồng và tham gia nhóm, sau đó bạn quay lại đây quét lại nhé!",
+                buttons=[
+                    [Button.url("👉 Link Nhóm Cộng Đồng", GROUP_INVITE_LINK)],
+                    [Button.inline("🔄 Thử Lại", b"enter_referral_friend")],
+                    [Button.inline("⬅️ Về Menu", b"menu_main")]
+                ]
+            )
+            return
+
+        # 5. Tất cả điều kiện ĐÃ THỎA MÃN -> Lưu vào cơ sở dữ liệu vĩnh viễn
+        db.set_user_referral_success(user_id, friend_id)
+
+        # Thông báo thành công và hiển thị nút mở app
+        congrat_text = (
+            "🎉 **XÁC MINH GIỚI THIỆU THÀNH CÔNG RỰC RỠ!**\n\n"
+            f"✅ Hệ thống đã xác nhận tài khoản bạn bè: **@{friend_name}** (`ID: {friend_id}`).\n"
+            "✨ Bạn đã đủ 100% điều kiện để nhận bản quyền Locket Gold Free!\n\n"
+            "👇 Bấm nút bên dưới để mở ứng dụng nhận Locket Gold Free ngay lập tức:"
+        )
+        buttons = [
+            [Button.url("🚀 MỞ APP NHẬN LOCKET GOLD FREE", "https://t.me/nghientrickshop_bot?startapp")],
+            [Button.inline("⬅️ Quay Lại Menu Chính", b"menu_main")]
+        ]
+        await event.respond(congrat_text, buttons=buttons)
+
+        # Gửi thông báo cho Admin biết có lượt giới thiệu mới hợp lệ
+        for aid in ADMIN_IDS:
+            try:
+                await client.send_message(
+                    aid,
+                    f"🎁 **THÀNH VIÊN HOÀN THÀNH MỜI BẠN BÈ (LOCKET FREE):**\n"
+                    f"• Người nhận: @{sender.username or ''} (`{user_id}`)\n"
+                    f"• Người được mời: @{friend_name} (`{friend_id}`)\n"
+                    f"• Thời gian: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+            except Exception:
+                pass
+        return
 
     # Xử lý nhập thông tin khách hàng cho đơn hàng
     if step == "waiting_input":

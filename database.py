@@ -72,7 +72,9 @@ class Database:
                 "joined_at": now_str,
                 "total_spent": 0,
                 "orders_count": 0,
-                "free_claimed": {}
+                "free_claimed": {},
+                "group_verified_at": 0, # Timestamp lần cuối xác minh nhóm (hết hạn sau 7 ngày)
+                "referred_friend_id": None # ID người bạn đã giới thiệu (chống spam)
             }
             self.save()
         else:
@@ -86,10 +88,55 @@ class Database:
             if "free_claimed" not in self.data["users"][uid]:
                 self.data["users"][uid]["free_claimed"] = {}
                 updated = True
+            if "group_verified_at" not in self.data["users"][uid]:
+                self.data["users"][uid]["group_verified_at"] = 0
+                updated = True
+            if "referred_friend_id" not in self.data["users"][uid]:
+                self.data["users"][uid]["referred_friend_id"] = None
+                updated = True
             if updated:
                 self.save()
 
         return self.data["users"][uid]
+
+    def is_group_verified(self, user_id: int) -> bool:
+        """Kiểm tra xem người dùng đã xác minh vào nhóm trong vòng 7 ngày chưa"""
+        uid = str(user_id)
+        user = self.get_or_create_user(user_id)
+        verified_time = user.get("group_verified_at", 0)
+        # 7 ngày = 7 * 86400 giây = 604800 giây
+        return (time.time() - verified_time) < (7 * 86400)
+
+    def set_group_verified(self, user_id: int):
+        """Lưu mốc thời gian xác minh vào nhóm thành công"""
+        uid = str(user_id)
+        if uid in self.data["users"]:
+            self.data["users"][uid]["group_verified_at"] = time.time()
+            self.save()
+
+    def find_user_by_username_or_id(self, query: str):
+        """Tìm user trong hệ thống theo username hoặc id (không phân biệt chữ hoa/thường)"""
+        clean_q = query.strip().lstrip("@").lower()
+        for u in self.data["users"].values():
+            if str(u.get("id")) == clean_q:
+                return u
+            if u.get("username") and u.get("username").lower() == clean_q:
+                return u
+        return None
+
+    def is_friend_already_used_as_referral(self, friend_id: int) -> bool:
+        """Kiểm tra xem ID bạn bè này đã từng được ai điền để nhận quà trước đó chưa (Chống dùng 1 người cho nhiều tài khoản)"""
+        for u in self.data["users"].values():
+            if u.get("referred_friend_id") == friend_id:
+                return True
+        return False
+
+    def set_user_referral_success(self, user_id: int, friend_id: int):
+        """Ghi nhận người bạn đã giới thiệu thành công gắn cố định với user_id và friend_id"""
+        uid = str(user_id)
+        if uid in self.data["users"]:
+            self.data["users"][uid]["referred_friend_id"] = friend_id
+            self.save()
 
     def has_claimed_free(self, user_id: int, product_id: str) -> bool:
         uid = str(user_id)
