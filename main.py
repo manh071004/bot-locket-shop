@@ -416,15 +416,17 @@ async def callback_handler(event):
 
     # XÁC MINH VÀO NHÓM CỘNG ĐỒNG
     if data == "verify_joined_group":
-        # Nếu bot có GROUP_ID thì quét qua Telethon, nếu chưa có GROUP_ID thì ghi nhận xác minh thành công
-        is_member = True
-        if GROUP_ID:
-            try:
-                participant = await client.get_permissions(GROUP_ID, user_id)
-                is_member = bool(participant and (participant.is_admin or participant.participant))
-            except Exception as e:
-                logger.warning(f"Quét nhóm khi bấm nút lỗi: {e}")
-                is_member = True
+        if not GROUP_ID:
+            await event.answer("⚠️ Hệ thống đang đồng bộ nhóm, vui lòng liên hệ Admin cấu hình ID nhóm!", alert=True)
+            return
+
+        is_member = False
+        try:
+            participant = await client.get_permissions(GROUP_ID, user_id)
+            is_member = bool(participant and (participant.is_admin or participant.participant))
+        except Exception as e:
+            logger.warning(f"Quét nhóm khi bấm nút lỗi: {e}")
+            is_member = False
 
         if is_member:
             db.set_group_verified(user_id)
@@ -439,7 +441,7 @@ async def callback_handler(event):
             except Exception:
                 await event.respond(welcome_text, buttons=get_main_menu_buttons(user_id))
         else:
-            await event.answer("⚠️ Bot kiểm tra bạn VẪN CHƯA vào nhóm! Vui lòng bấm '👉 Tham Gia Nhóm Ngay' trước nhé.", alert=True)
+            await event.answer("⚠️ Bot kiểm tra bạn VẪN CHƯA vào nhóm! Vui lòng bấm '👉 Tham Gia Nhóm Cộng Đồng' trước rồi thử lại nhé.", alert=True)
         return
 
     # LUỒNG NHẬN LOCKET GOLD FREE: YÊU CẦU GIỚI THIỆU BẠN BÈ
