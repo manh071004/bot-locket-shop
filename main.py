@@ -5,7 +5,7 @@ import time
 import asyncio
 from datetime import datetime
 from telethon import TelegramClient, events, Button
-from telethon.tl.types import ReplyKeyboardMarkup, KeyboardButtonRow, KeyboardButton
+from telethon.tl.types import ReplyKeyboardMarkup, KeyboardButtonRow, KeyboardButton, ReplyKeyboardHide
 from telethon.errors import MessageNotModifiedError, UserIsBlockedError
 
 # Nạp cấu hình và cơ sở dữ liệu
@@ -59,6 +59,7 @@ def get_main_menu_buttons(user_id: int):
             Button.inline("📜 Hướng Dẫn Mua", b"guide")
         ]
     ]
+    # CHỈ DUY NHẤT ADMIN THẬT (ID TRONG CONFIG) MỚI NHÌN THẤY NÚT NÀY
     if is_admin(user_id):
         buttons.append([Button.inline("👑 Quản Trị Viên (Admin Panel)", b"admin_panel")])
     return buttons
@@ -118,7 +119,7 @@ async def start_handler(event):
         f"👇 _Bạn có thể bấm vào Menu bên dưới hoặc các nút chọn nhanh:_"
     )
 
-    # Gửi duy nhất 1 tin nhắn chào mừng kèm nút chọn nhanh
+    # Gửi duy nhất 1 tin nhắn chào mừng kèm các nút bấm inline gọn gàng, ẩn sạch bàn phím to dưới đáy
     await event.respond(welcome_text, buttons=get_main_menu_buttons(user_id))
 
 @client.on(events.NewMessage(pattern=r"^(/products|🛍️ Bảng Giá Sản Phẩm)$"))
