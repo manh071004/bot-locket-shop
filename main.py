@@ -263,16 +263,36 @@ async def orders_command_handler(event):
     ]
     await event.respond(msg, buttons=buttons)
 
+def get_support_text_and_buttons():
+    """Tạo nội dung hỗ trợ khách hàng, tự động ẩn thông tin admin nếu bật chế độ ẩn danh"""
+    incognito = db.is_admin_incognito()
+    if incognito:
+        text = (
+            "💬 **HỖ TRỢ KHÁCH HÀNG 24/7**\n\n"
+            "Shop luôn sẵn sàng hỗ trợ bạn 24/7!\n\n"
+            "• **Kênh hỗ trợ chính thức:** Vui lòng gửi tin nhắn trực tiếp vào bot hoặc qua nhóm cộng đồng để được Admin phản hồi sớm nhất.\n"
+            "• **Cam kết:** Mọi đơn hàng đều được xử lý và kích hoạt tự động nhanh chóng!\n\n"
+            "_(Bộ phận Chăm Sóc Khách Hàng ẩn danh đang bảo mật thông tin)_"
+        )
+        buttons = [
+            [Button.url("👉 Tham Gia Nhóm Hỗ Trợ", GROUP_INVITE_LINK)],
+            [Button.inline("⬅️ Quay Lại", b"menu_main")]
+        ]
+    else:
+        admin_id_str = str(ADMIN_IDS[0]) if ADMIN_IDS else ""
+        text = (
+            "💬 **HỖ TRỢ KHÁCH HÀNG 24/7**\n\n"
+            "Nếu bạn cần tư vấn, gặp sự cố thanh toán hoặc bảo hành dịch vụ, xin vui lòng:\n\n"
+            f"• **Nhắn tin trực tiếp với Admin:** [Liên Hệ Admin](tg://user?id={admin_id_str})\n"
+            f"• **Telegram ID Admin:** `{admin_id_str}`\n\n"
+            "Đội ngũ hỗ trợ sẽ phản hồi bạn trong thời gian sớm nhất!"
+        )
+        buttons = [[Button.inline("⬅️ Quay Lại", b"menu_main")]]
+    return text, buttons
+
 @client.on(events.NewMessage(pattern=r"^(/support|💬 Hỗ Trợ 24/7|/help)$"))
 async def support_command_handler(event):
-    text = (
-        "💬 **HỖ TRỢ KHÁCH HÀNG 24/7**\n\n"
-        "Nếu bạn cần tư vấn, gặp sự cố thanh toán hoặc bảo hành dịch vụ, xin vui lòng:\n\n"
-        f"• **Nhắn tin trực tiếp với Admin:** [Liên Hệ Admin](tg://user?id={ADMIN_IDS[0] if ADMIN_IDS else ''})\n"
-        f"• **Telegram ID Admin:** `{ADMIN_IDS[0] if ADMIN_IDS else ''}`\n\n"
-        "Đội ngũ hỗ trợ sẽ phản hồi bạn trong thời gian sớm nhất!"
-    )
-    buttons = [[Button.inline("⬅️ Quay Lại", b"menu_main")]]
+    text, buttons = get_support_text_and_buttons()
     await event.respond(text, buttons=buttons)
 
 @client.on(events.NewMessage(pattern=r"^(/admin|👑 Bảng Điều Khiển Admin)$"))
@@ -521,15 +541,7 @@ async def callback_handler(event):
 
     # 7. Hỗ trợ khách hàng
     if data == "contact_support":
-        admin_contact = f"@{ADMIN_IDS[0]}" if ADMIN_IDS else "Admin"
-        text = (
-            "💬 **HỖ TRỢ KHÁCH HÀNG 24/7**\n\n"
-            "Nếu bạn cần tư vấn, gặp sự cố thanh toán hoặc bảo hành dịch vụ, xin vui lòng:\n\n"
-            f"• **Nhắn tin trực tiếp với Admin:** [Liên Hệ Admin](tg://user?id={ADMIN_IDS[0] if ADMIN_IDS else ''})\n"
-            f"• **Telegram ID:** `{ADMIN_IDS[0] if ADMIN_IDS else ''}`\n\n"
-            "Đội ngũ hỗ trợ sẽ phản hồi bạn trong thời gian sớm nhất!"
-        )
-        buttons = [[Button.inline("⬅️ Quay Lại", b"menu_main")]]
+        text, buttons = get_support_text_and_buttons()
         try:
             await event.edit(text, buttons=buttons)
         except MessageNotModifiedError:
@@ -620,6 +632,17 @@ async def callback_handler(event):
             return
         await show_admin_panel(event, is_callback=True)
         await event.answer()
+        return
+
+    # 11.1 Admin Bật/Tắt Chế độ ẩn danh
+    if data == "admin_toggle_incognito":
+        if not is_admin(user_id):
+            await event.answer("⛔ Không có quyền!", alert=True)
+            return
+        new_status = db.toggle_admin_incognito()
+        alert_msg = "🕶️ Đã BẬT chế độ ẩn danh! Toàn bộ thông tin Admin đã được giấu kín." if new_status else "👁️ Đã TẮT chế độ ẩn danh! Thông tin Admin đã hiển thị lại."
+        await event.answer(alert_msg, alert=True)
+        await show_admin_panel(event, is_callback=True)
         return
 
     # 12. Admin Backup Trigger
@@ -1059,6 +1082,10 @@ async def handle_paid_order(user_id: int, order_id: str):
 async def show_admin_panel(event, is_callback=False):
     stats = db.get_statistics()
     pending = db.get_pending_delivery_orders()
+    is_incognito = db.is_admin_incognito()
+
+    incognito_status = "🟢 ĐANG BẬT (Đã ẩn toàn bộ thông tin/ID Admin)" if is_incognito else "🔴 ĐANG TẮT (Hiện thông tin liên hệ)"
+    toggle_text = "👁️ Tắt Ẩn Danh (Hiện Thông Tin)" if is_incognito else "🕶️ Bật Ẩn Danh (Giấu Thông Tin Admin)"
 
     text = (
         f"👑 **BẢNG ĐIỀU KHIỂN QUẢN TRỊ VIÊN (ADMIN)**\n\n"
@@ -1069,10 +1096,12 @@ async def show_admin_panel(event, is_callback=False):
         f"• Đơn hàng hôm nay: `{stats['today_orders_count']}` đơn\n"
         f"• Tổng khách hàng: `{stats['total_users']}` người\n"
         f"• ⏳ **Đơn đang chờ bàn giao:** `{len(pending)}` đơn\n\n"
+        f"🕶️ **Chế độ ẩn danh Admin:** {incognito_status}\n\n"
         f"Chọn chức năng quản trị bên dưới:"
     )
 
     buttons = [
+        [Button.inline(toggle_text, b"admin_toggle_incognito")],
         [Button.inline("📋 Xem Đơn Chờ Bàn Giao", b"admin_pending_orders")],
         [
             Button.inline("💾 Sao Lưu Dữ Liệu (/backup)", b"admin_backup"),

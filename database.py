@@ -17,6 +17,9 @@ class Database:
             "stats": {
                 "total_revenue": 0,
                 "total_orders": 0
+            },
+            "settings": {
+                "admin_incognito": False
             }
         }
         self.load()
@@ -35,6 +38,8 @@ class Database:
                             self.data["orders"] = {}
                         if "stats" not in self.data:
                             self.data["stats"] = {"total_revenue": 0, "total_orders": 0}
+                        if "settings" not in self.data:
+                            self.data["settings"] = {"admin_incognito": False}
                         logger.info(f"Đã tải database thành công: {len(self.data['users'])} users, {len(self.data['orders'])} orders.")
                         return
             except Exception as e:
@@ -44,6 +49,19 @@ class Database:
                 logger.warning(f"Đã tạo bản sao lưu file lỗi sang {backup_name}")
 
         self.save()
+
+    def is_admin_incognito(self) -> bool:
+        """Kiểm tra chế độ ẩn danh của Admin (bật thì ẩn ID và thông tin liên hệ của Admin)"""
+        return bool(self.data.get("settings", {}).get("admin_incognito", False))
+
+    def toggle_admin_incognito(self) -> bool:
+        """Bật/tắt chế độ ẩn danh cho Admin"""
+        if "settings" not in self.data:
+            self.data["settings"] = {}
+        curr = self.data["settings"].get("admin_incognito", False)
+        self.data["settings"]["admin_incognito"] = not curr
+        self.save()
+        return self.data["settings"]["admin_incognito"]
 
     def save(self):
         """Ghi an toàn dữ liệu ra file sử dụng atomic replace"""
