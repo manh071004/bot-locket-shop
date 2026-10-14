@@ -150,11 +150,15 @@ class Database:
         return False
 
     def reset_user_completely(self, user_id: int):
-        """Xóa toàn bộ thông tin tài khoản khỏi bot (đưa về trạng thái khách hàng mới 100%)"""
+        """Xóa toàn bộ thông tin tài khoản khỏi bot (đưa về trạng thái khách hàng mới 100%)
+           Đồng thời giải phóng toàn bộ user bạn bè mà tài khoản này đã từng điền để có thể test lại lần 2."""
         uid = str(user_id)
         if uid in self.data["users"]:
+            # Giải phóng bạn bè mà user này đã dùng để nhận thưởng
+            self.data["users"][uid]["referred_friend_id"] = None
             del self.data["users"][uid]
-        # Xóa liên kết người này từng là người giới thiệu của ai đó nếu có
+
+        # Xóa liên kết nếu người này từng được ai đó điền làm bạn bè giới thiệu
         for u in self.data["users"].values():
             if u.get("referred_friend_id") == user_id:
                 u["referred_friend_id"] = None
