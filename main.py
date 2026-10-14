@@ -72,7 +72,17 @@ def get_products_menu_buttons():
     rows.append([Button.inline("⬅️ Quay Lại Menu Chính", b"menu_main")])
     return rows
 
-# ==================== CÁC SỰ KIỆN LỆNH TELEGRAM ====================
+def get_reply_keyboard(user_id: int):
+    """Bàn phím Menu cố định dưới thanh nhập tin nhắn"""
+    rows = [
+        [Button.text("🎁 Nhận Locket Free 0đ"), Button.text("🛍️ Bảng Giá Sản Phẩm")],
+        [Button.text("📋 Đơn Hàng Của Tôi"), Button.text("💬 Hỗ Trợ 24/7")]
+    ]
+    if is_admin(user_id):
+        rows.append([Button.text("👑 Bảng Điều Khiển Admin")])
+    return rows
+
+# ==================== CÁC SỰ KIỆN LỆNH TELEGRAM & NÚT BÀN PHÍM DƯỚI ====================
 
 @client.on(events.NewMessage(pattern=r"^/start"))
 async def start_handler(event):
@@ -95,24 +105,95 @@ async def start_handler(event):
         f"• 👑 **Admin Canva Pro Edu 2 Năm:** 120.000đ\n"
         f"• 🤖 **Gemini Pro 18 Tháng:** 200.000đ\n\n"
         f"⚡ **Tất cả dịch vụ đều có bảo hành 1 đổi 1 & hỗ trợ 24/7!**\n"
-        f"Vui lòng chọn chức năng bên dưới để bắt đầu:"
+        f"👇 _Bạn có thể bấm vào Menu bên dưới hoặc các nút chọn nhanh:_"
     )
 
-    await event.respond(welcome_text, buttons=get_main_menu_buttons(user_id))
+    # Gửi tin nhắn có cả nút Inline trong tin nhắn và Menu phím bấm ở dưới
+    await event.respond(welcome_text, buttons=get_reply_keyboard(user_id))
+    await event.respond("✨ **BẢNG ĐIỀU KHIỂN NHANH:**", buttons=get_main_menu_buttons(user_id))
 
-@client.on(events.NewMessage(pattern=r"^/help"))
-async def help_handler(event):
-    help_text = (
-        "📖 **HƯỚNG DẪN MUA HÀNG & SỬ DỤNG BOT**\n\n"
-        "1️⃣ Chọn sản phẩm bạn muốn đăng ký từ menu.\n"
-        "2️⃣ Nhập thông tin nhận hàng (Email/Username) theo hướng dẫn.\n"
-        "3️⃣ Quét mã QR thanh toán VietQR / PayOS tự động.\n"
-        "4️⃣ Hệ thống tự động ghi nhận tiền và kích hoạt dịch vụ cho bạn ngay!\n\n"
-        "📞 Nếu bạn cần hỗ trợ, gõ `/support` hoặc liên hệ Admin."
+@client.on(events.NewMessage(pattern=r"^(/products|🛍️ Bảng Giá Sản Phẩm)$"))
+async def products_command_handler(event):
+    text = (
+        "🛍️ **BẢNG GIÁ DỊCH VỤ BẢN QUYỀN CHÍNH HÃNG**\n\n"
+        "1. 🎁 **Locket Gold Miễn Phí:** `0 VNĐ`\n"
+        "2. 💛 **Locket Gold 2 Năm:** `80.000 VNĐ`\n"
+        "3. 🎨 **Canva Pro Edu 12 Tháng:** `40.000 VNĐ`\n"
+        "4. 👑 **Admin Canva Pro Edu 2 Năm:** `120.000 VNĐ`\n"
+        "5. 🤖 **Gemini Pro 18 Tháng:** `200.000 VNĐ`\n\n"
+        "👇 Bấm vào từng sản phẩm dưới đây để xem chi tiết & đặt mua:"
     )
-    await event.respond(help_text, buttons=[[Button.inline("⬅️ Về Menu Chính", b"menu_main")]])
+    await event.respond(text, buttons=get_products_menu_buttons())
 
-@client.on(events.NewMessage(pattern=r"^/admin"))
+@client.on(events.NewMessage(pattern=r"^(/free|🎁 Nhận Locket Free 0đ)$"))
+async def free_command_handler(event):
+    sender = await event.get_sender()
+    user_id = sender.id
+    prod = get_product_by_id("locket_free")
+    if not prod:
+        await event.respond("⚠️ Gói khuyến mãi tạm thời chưa sẵn sàng.")
+        return
+
+    if db.has_claimed_free(user_id, prod["id"]):
+        await event.respond(
+            "⚠️ **Bạn đã nhận gói Locket Gold Miễn Phí rồi!**\n"
+            "Mỗi khách hàng chỉ được nhận 1 lần. Bạn có thể tham khảo gói Locket Gold 2 Năm chính chủ nhé!",
+            buttons=get_products_menu_buttons()
+        )
+        return
+
+    user_states[user_id] = {
+        "step": "waiting_input",
+        "product_id": "locket_free",
+        "expires_at": time.time() + TIMEOUT_INPUT_SECONDS
+    }
+
+    prompt_text = (
+        f"📝 **BƯỚC ĐẶT HÀNG: {prod['name']}**\n\n"
+        f"💰 **Giá thanh toán:** `0 VNĐ (MIỄN PHÍ)`\n"
+        f"👉 **Yêu cầu:** {prod.get('input_prompt', 'Vui lòng nhập Email hoặc Username Locket của bạn:')}\n\n"
+        f"⏱️ _Thời gian thao tác: {TIMEOUT_INPUT_SECONDS // 60} phút. Vui lòng gửi tin nhắn trả lời trực tiếp bên dưới!_"
+    )
+    await event.respond(prompt_text, buttons=[[Button.inline("❌ Hủy Bỏ", b"cancel_order")]])
+
+@client.on(events.NewMessage(pattern=r"^(/orders|📋 Đơn Hàng Của Tôi)$"))
+async def orders_command_handler(event):
+    user_id = event.sender_id
+    orders = db.get_user_orders(user_id, limit=5)
+    if not orders:
+        msg = "📋 **Bạn chưa có đơn hàng nào trong lịch sử!**\nHãy chọn một sản phẩm để trải nghiệm nhé."
+    else:
+        msg = "📋 **DANH SÁCH ĐƠN HÀNG GẦN ĐÂY CỦA BẠN:**\n\n"
+        for o in orders:
+            st = o.get("status")
+            st_icon = "✅ Đã Hoàn Tất" if st in ["COMPLETED"] else ("💳 Đã Thanh Toán - Chờ Bàn Giao" if st == "PAID" else ("⏳ Chờ Thanh Toán" if st == "PENDING" else "❌ Đã Hủy"))
+            msg += (
+                f"📦 **Đơn hàng:** `#{o['order_id']}`\n"
+                f"• Dịch vụ: **{o['product_name']}**\n"
+                f"• Giá: `{format_money(o['amount'])}`\n"
+                f"• Trạng thái: {st_icon}\n"
+                f"• Ngày đặt: {o['created_at']}\n"
+                f"────────────────────\n"
+            )
+    buttons = [
+        [Button.inline("🛍️ Xem Bảng Giá Mua Thêm", b"menu_products")],
+        [Button.inline("⬅️ Quay Lại", b"menu_main")]
+    ]
+    await event.respond(msg, buttons=buttons)
+
+@client.on(events.NewMessage(pattern=r"^(/support|💬 Hỗ Trợ 24/7|/help)$"))
+async def support_command_handler(event):
+    text = (
+        "💬 **HỖ TRỢ KHÁCH HÀNG 24/7**\n\n"
+        "Nếu bạn cần tư vấn, gặp sự cố thanh toán hoặc bảo hành dịch vụ, xin vui lòng:\n\n"
+        f"• **Nhắn tin trực tiếp với Admin:** [Liên Hệ Admin](tg://user?id={ADMIN_IDS[0] if ADMIN_IDS else ''})\n"
+        f"• **Telegram ID Admin:** `{ADMIN_IDS[0] if ADMIN_IDS else ''}`\n\n"
+        "Đội ngũ hỗ trợ sẽ phản hồi bạn trong thời gian sớm nhất!"
+    )
+    buttons = [[Button.inline("⬅️ Quay Lại", b"menu_main")]]
+    await event.respond(text, buttons=buttons)
+
+@client.on(events.NewMessage(pattern=r"^(/admin|👑 Bảng Điều Khiển Admin)$"))
 async def admin_command_handler(event):
     user_id = event.sender_id
     if not is_admin(user_id):
