@@ -189,8 +189,8 @@ async def send_locket_free_referral_flow(event, user_id: int):
     user_data = db.get_or_create_user(user_id)
     friend_id = user_data.get("referred_friend_id")
 
-    if friend_id:
-        # Đã đủ điều kiện: hiển thị trực tiếp nút mở ứng dụng
+    # ADMIN hoặc người đã xác minh giới thiệu bạn bè: hiển thị trực tiếp nút mở app
+    if is_admin(user_id) or friend_id:
         text_success = (
             "🎉 **CHÚC MỪNG BẠN ĐÃ ĐỦ ĐIỀU KIỆN!**\n\n"
             "✅ Bạn đã hoàn thành nhiệm vụ giới thiệu bạn bè và tham gia nhóm cộng đồng.\n"
@@ -381,12 +381,12 @@ async def callback_handler(event):
 
     # LUỒNG NHẬN LOCKET GOLD FREE: YÊU CẦU GIỚI THIỆU BẠN BÈ
     if data == "start_locket_free_flow":
-        # Kiểm tra nếu user này đã hoàn thành giới thiệu bạn bè chưa
+        # Kiểm tra nếu là Admin hoặc user này đã hoàn thành giới thiệu bạn bè chưa
         user_data = db.get_or_create_user(user_id)
         friend_id = user_data.get("referred_friend_id")
 
-        if friend_id:
-            # ĐÃ ĐỦ ĐIỀU KIỆN: HIỂN THỊ TRỰC TIẾP NÚT CHUYỂN ĐẾN APP
+        if is_admin(user_id) or friend_id:
+            # ĐÃ ĐỦ ĐIỀU KIỆN HOẶC LÀ ADMIN: HIỂN THỊ TRỰC TIẾP NÚT CHUYỂN ĐẾN APP
             text_success = (
                 "🎉 **CHÚC MỪNG BẠN ĐÃ ĐỦ ĐIỀU KIỆN!**\n\n"
                 "✅ Bạn đã hoàn thành nhiệm vụ giới thiệu bạn bè và tham gia nhóm cộng đồng.\n"
