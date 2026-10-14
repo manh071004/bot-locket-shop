@@ -116,14 +116,13 @@ def get_products_menu_buttons():
 
 def get_reply_keyboard(user_id: int):
     """Bàn phím dưới đáy 1 hàng 3 nút siêu mảnh mai, nhỏ gọn không chiếm màn hình"""
-    kb_rows = [
-        KeyboardButtonRow([
-            KeyboardButton("🎁 Locket Free"),
-            KeyboardButton("🛍️ Bảng Giá"),
-            KeyboardButton("📋 Đơn Hàng")
-        ])
+    return [
+        [
+            Button.text("🎁 Locket Free", resize=True),
+            Button.text("🛍️ Bảng Giá", resize=True),
+            Button.text("📋 Đơn Hàng", resize=True)
+        ]
     ]
-    return ReplyKeyboardMarkup(rows=kb_rows, resize=True)
 
 # ==================== CÁC SỰ KIỆN LỆNH TELEGRAM & NÚT BÀN PHÍM DƯỚI ====================
 
@@ -164,9 +163,9 @@ async def start_handler(event):
         await event.respond(welcome_text, buttons=get_reply_keyboard(user_id))
         await event.respond("✨ **BẢNG CHỨC NĂNG:**", buttons=get_main_menu_buttons(user_id))
     except Exception as e:
-        logger.error(f"Lỗi khi xử lý lệnh /start: {e}")
+        logger.error(f"Lỗi khi xử lý lệnh /start: {e}", exc_info=True)
         try:
-            await event.respond("⚠️ Đang tải lại hệ thống, vui lòng thử lại sau giây lát!")
+            await event.respond(f"⚠️ **Đang tải lại hệ thống ({e})**\nVui lòng thử lại sau giây lát!")
         except Exception:
             pass
 
