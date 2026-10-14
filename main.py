@@ -48,24 +48,33 @@ def format_money(amount: int) -> str:
 
 # ==================== GIAO DIỆN CHÍNH & HELPER ====================
 
-# ==================== HÀM KIỂM TRA THAM GIA NHÓM & QUẢNG CÁO ====================
+# Biến tạm lưu danh sách user đang test như khách thường (kể cả admin)
+test_regular_users = set()
 
 async def check_user_in_group(user_id: int) -> bool:
     """Kiểm tra xem người dùng đã thực sự tham gia nhóm cộng đồng chưa"""
-    if is_admin(user_id):
+    # Nếu đang bật chế độ testadmin thì không miễn trừ admin, kiểm tra như khách mới
+    if is_admin(user_id) and user_id not in test_regular_users:
         return True
-    if not GROUP_ID:
+    
+    # 1. Kiểm tra nếu đã xác minh vào nhóm trong vòng 7 ngày qua
+    if db.is_group_verified(user_id):
         return True
-    try:
-        participant = await client.get_permissions(GROUP_ID, user_id)
-        if participant and (participant.is_admin or participant.participant):
-            db.set_group_verified(user_id)
-            return True
-        return False
-    except Exception as e:
-        # Nếu bot chưa có quyền trong nhóm hoặc chưa lấy được Peer, cho phép qua nếu đã ấn xác nhận
-        logger.warning(f"Kiểm tra thành viên nhóm lỗi/fallback: {e}")
-        return db.is_group_verified(user_id)
+
+    # 2. Nếu có GROUP_ID thì quét quyền trực tiếp từ Telegram
+    if GROUP_ID:
+        try:
+            participant = await client.get_permissions(GROUP_ID, user_id)
+            if participant and (participant.is_admin or participant.participant):
+                db.set_group_verified(user_id)
+                return True
+            return False
+        except Exception as e:
+            logger.warning(f"Quét thành viên nhóm Telegram lỗi: {e}")
+            return False
+
+    # 3. Nếu chưa cấu hình GROUP_ID: Buộc khách phải bấm nút '✅ Tôi Đã Vào Nhóm' thì mới được dùng
+    return False
 
 def get_join_group_prompt(user_id: int):
     """Thông báo bắt buộc tham gia nhóm cộng đồng kèm nút xác minh"""
@@ -139,7 +148,8 @@ async def start_handler(event):
         user_states.pop(user_id, None)
 
         # 1. KIỂM TRA ĐIỀU KIỆN VÀO NHÓM CỘNG ĐỒNG (HẠN 7 NGÀY)
-        if not is_admin(user_id) and not db.is_group_verified(user_id):
+        is_exempt = is_admin(user_id) and (user_id not in test_regular_users)
+        if not is_exempt and not db.is_group_verified(user_id):
             is_member = await check_user_in_group(user_id)
             if not is_member:
                 prompt_text, buttons = get_join_group_prompt(user_id)
@@ -195,8 +205,9 @@ async def send_locket_free_referral_flow(event, user_id: int):
     user_data = db.get_or_create_user(user_id)
     friend_id = user_data.get("referred_friend_id")
 
-    # ADMIN hoặc người đã xác minh giới thiệu bạn bè: hiển thị trực tiếp nút mở app
-    if is_admin(user_id) or friend_id:
+    # ADMIN (khi không ở chế độ test) hoặc người đã xác minh giới thiệu bạn bè: hiển thị trực tiếp nút mở app
+    is_exempt = is_admin(user_id) and (user_id not in test_regular_users)
+    if is_exempt or friend_id:
         text_success = (
             "🎉 **CHÚC MỪNG BẠN ĐÃ ĐỦ ĐIỀU KIỆN!**\n\n"
             "✅ Bạn đã hoàn thành nhiệm vụ giới thiệu bạn bè và tham gia nhóm cộng đồng.\n"
@@ -311,6 +322,28 @@ async def backup_command_handler(event):
         return
     await perform_backup_to_chat(event.chat_id)
 
+# ==================== LỆNH BÍ MẬT TEST DÀNH CHO ADMIN (/testadmin) ====================
+# Lệnh này không hiển thị đề xuất trong Menu BotFather
+@client.on(events.NewMessage(pattern=r"(?i)^/testadmin$"))
+async def test_admin_handler(event):
+    user_id = event.sender_id
+    # 1. Xóa hoàn toàn toàn bộ dữ liệu tài khoản này trong cơ sở dữ liệu
+    db.reset_user_completely(user_id)
+    user_states.pop(user_id, None)
+
+    # 2. Đưa tài khoản vào chế độ test như khách mới (bỏ qua mọi đặc quyền admin tạm thời)
+    test_regular_users.add(user_id)
+
+    # 3. Phản hồi thông báo và chạy lại lệnh /start như một khách hàng mới 100%
+    await event.respond(
+        "🔄 **[CHẾ ĐỘ TEST KHÁCH MỚI]**\n\n"
+        "✅ Toàn bộ thông tin tài khoản của bạn trên bot đã được **XÓA SẠCH**!\n"
+        "👉 Bạn hiện đang trải nghiệm bot **như một khách hàng hoàn toàn mới** (bị chặn nhóm, chưa giới thiệu bạn bè).\n\n"
+        "👇 _Hệ thống đang mở lại màn hình Chào mừng cho bạn..._"
+    )
+    # Tự động kích hoạt start_handler để hiện ngay thông báo bắt buộc vào nhóm
+    await start_handler(event)
+
 # ==================== XỬ LÝ CALLBACK QUERIES (NÚT BẤM) ====================
 
 @client.on(events.CallbackQuery)
@@ -388,7 +421,16 @@ async def callback_handler(event):
 
     # XÁC MINH VÀO NHÓM CỘNG ĐỒNG
     if data == "verify_joined_group":
-        is_member = await check_user_in_group(user_id)
+        # Nếu bot có GROUP_ID thì quét qua Telethon, nếu chưa có GROUP_ID thì ghi nhận xác minh thành công
+        is_member = True
+        if GROUP_ID:
+            try:
+                participant = await client.get_permissions(GROUP_ID, user_id)
+                is_member = bool(participant and (participant.is_admin or participant.participant))
+            except Exception as e:
+                logger.warning(f"Quét nhóm khi bấm nút lỗi: {e}")
+                is_member = True
+
         if is_member:
             db.set_group_verified(user_id)
             await event.answer("🎉 Tuyệt vời! Bạn đã xác minh vào nhóm thành công.", alert=True)
@@ -411,7 +453,8 @@ async def callback_handler(event):
         user_data = db.get_or_create_user(user_id)
         friend_id = user_data.get("referred_friend_id")
 
-        if is_admin(user_id) or friend_id:
+        is_exempt = is_admin(user_id) and (user_id not in test_regular_users)
+        if is_exempt or friend_id:
             # ĐÃ ĐỦ ĐIỀU KIỆN HOẶC LÀ ADMIN: HIỂN THỊ TRỰC TIẾP NÚT CHUYỂN ĐẾN APP
             text_success = (
                 "🎉 **CHÚC MỪNG BẠN ĐÃ ĐỦ ĐIỀU KIỆN!**\n\n"

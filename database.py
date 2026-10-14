@@ -149,6 +149,17 @@ class Database:
                 return True
         return False
 
+    def reset_user_completely(self, user_id: int):
+        """Xóa toàn bộ thông tin tài khoản khỏi bot (đưa về trạng thái khách hàng mới 100%)"""
+        uid = str(user_id)
+        if uid in self.data["users"]:
+            del self.data["users"][uid]
+        # Xóa liên kết người này từng là người giới thiệu của ai đó nếu có
+        for u in self.data["users"].values():
+            if u.get("referred_friend_id") == user_id:
+                u["referred_friend_id"] = None
+        self.save()
+
     def set_user_referral_success(self, user_id: int, friend_id: int):
         """Ghi nhận người bạn đã giới thiệu thành công gắn cố định với user_id và friend_id"""
         uid = str(user_id)
