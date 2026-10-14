@@ -1,0 +1,47 @@
+[
+  {
+    "id": "locket_free",
+    "name": "🎁 Locket Gold (Miễn Phí)",
+    "price": 0,
+    "badge": "FREE 0Đ",
+    "description": "• Trải nghiệm đầy đủ tính năng Locket Gold 0đ\n• Đăng ảnh & video sắc nét, không giới hạn bạn bè\n• Huy hiệu Gold nổi bật trên trang cá nhân\n• Nhận ngay không cần thanh toán (Mỗi người nhận 1 lần)",
+    "input_prompt": "Vui lòng nhập Email hoặc Tên tài khoản (Username) Locket của bạn để nhận:",
+    "input_placeholder": "Ví dụ: username_locket hoặc email@gmail.com"
+  },
+  {
+    "id": "locket_2y",
+    "name": "💛 Locket Gold (2 Năm)",
+    "price": 80000,
+    "badge": "80.000đ / 2 Năm",
+    "description": "• Gói Locket Gold chính chủ thời hạn 2 năm (24 tháng)\n• Mở khóa toàn bộ tính năng VIP cao cấp nhất\n• Tải ảnh/video chất lượng cao, icon ứng dụng tùy chỉnh\n• Bảo hành uy tín 1 đổi 1 suốt 2 năm sử dụng",
+    "input_prompt": "Vui lòng nhập Email hoặc Số điện thoại đăng ký Locket của bạn:",
+    "input_placeholder": "Ví dụ: 0912345678 hoặc locket@gmail.com"
+  },
+  {
+    "id": "canva_edu_12m",
+    "name": "🎨 Canva Pro Edu (12 Tháng)",
+    "price": 40000,
+    "badge": "40.000đ / 1 Năm",
+    "description": "• Nâng cấp chính chủ trên Email Canva cá nhân của bạn\n• Thời hạn sử dụng 12 tháng (1 năm)\n• Mở khóa hơn 100+ triệu hình ảnh, video, đồ họa Pro\n• Tính năng xóa phông nền 1 chạm, Magic Resize, Brand Kit\n• Bảo hành 1 đổi 1 trong 12 tháng",
+    "input_prompt": "Vui lòng nhập địa chỉ Email tài khoản Canva cần nâng cấp:",
+    "input_placeholder": "Ví dụ: mycanva@gmail.com"
+  },
+  {
+    "id": "canva_admin_2y",
+    "name": "👑 Admin Canva Pro Edu Chính Chủ (2 Năm)",
+    "price": 120000,
+    "badge": "120.000đ / 2 Năm",
+    "description": "• Quyền Quản trị viên (Admin) nhóm Canva Pro Edu chính chủ\n• Thời hạn 2 năm (24 tháng)\n• Toàn quyền quản lý nhóm, tự mời thêm thành viên vào team\n• Sử dụng trọn bộ tính năng Canva Pro không giới hạn\n• Bảo hành 1 đổi 1 suốt 2 năm",
+    "input_prompt": "Vui lòng nhập Email bạn muốn cấp quyền Admin Canva Edu:",
+    "input_placeholder": "Ví dụ: admin_canva@gmail.com"
+  },
+  {
+    "id": "gemini_pro_18m",
+    "name": "🤖 Gemini Pro (18 Tháng)",
+    "price": 200000,
+    "badge": "200.000đ / 18 Tháng",
+    "description": "• Gói Google Gemini Pro (Advanced) thời hạn 18 tháng\n• Trải nghiệm mô hình trí tuệ nhân tạo đỉnh cao của Google\n• Phân tích dữ liệu, hình ảnh, văn bản và code chuyên sâu\n• Cửa sổ ngữ cảnh siêu lớn, tốc độ phản hồi nhanh vượt trội\n• Bảo hành 1 đổi 1 suốt 18 tháng",
+    "input_prompt": "Vui lòng nhập Email Google (Gmail) của bạn:",
+    "input_placeholder": "Ví dụ: mygoogle@gmail.com"
+  }
+]

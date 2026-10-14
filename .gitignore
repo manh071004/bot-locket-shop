@@ -1,0 +1,7 @@
+__pycache__/
+*.session
+*.session-journal
+*.log
+.env
+db.json.tmp
+db.json.corrupt.*
