@@ -5,6 +5,7 @@ import time
 import asyncio
 from datetime import datetime
 from telethon import TelegramClient, events, Button
+from telethon.tl.types import ReplyKeyboardMarkup, KeyboardButtonRow, KeyboardButton
 from telethon.errors import MessageNotModifiedError, UserIsBlockedError
 
 # Nạp cấu hình và cơ sở dữ liệu
@@ -73,14 +74,22 @@ def get_products_menu_buttons():
     return rows
 
 def get_reply_keyboard(user_id: int):
-    """Bàn phím Menu cố định dưới thanh nhập tin nhắn"""
-    rows = [
-        [Button.text("🎁 Nhận Locket Free 0đ"), Button.text("🛍️ Bảng Giá Sản Phẩm")],
-        [Button.text("📋 Đơn Hàng Của Tôi"), Button.text("💬 Hỗ Trợ 24/7")]
+    """Bàn phím Menu cố định dưới thanh nhập tin nhắn được thu nhỏ gọn gàng (resize=True)"""
+    kb_rows = [
+        KeyboardButtonRow([
+            KeyboardButton("🎁 Nhận Locket Free 0đ"),
+            KeyboardButton("🛍️ Bảng Giá Sản Phẩm")
+        ]),
+        KeyboardButtonRow([
+            KeyboardButton("📋 Đơn Hàng Của Tôi"),
+            KeyboardButton("💬 Hỗ Trợ 24/7")
+        ])
     ]
     if is_admin(user_id):
-        rows.append([Button.text("👑 Bảng Điều Khiển Admin")])
-    return rows
+        kb_rows.append(KeyboardButtonRow([
+            KeyboardButton("👑 Bảng Điều Khiển Admin")
+        ]))
+    return ReplyKeyboardMarkup(rows=kb_rows, resize=True)
 
 # ==================== CÁC SỰ KIỆN LỆNH TELEGRAM & NÚT BÀN PHÍM DƯỚI ====================
 
