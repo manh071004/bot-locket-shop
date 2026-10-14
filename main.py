@@ -169,9 +169,11 @@ async def start_handler(event):
             f"👇 _Chọn chức năng bên dưới để bắt đầu:_"
         )
 
-        # Gửi menu inline kèm bàn phím dưới đáy 1 hàng siêu nhỏ gọn
-        await event.respond(welcome_text, buttons=get_reply_keyboard(user_id))
-        await event.respond("✨ **BẢNG CHỨC NĂNG:**", buttons=get_main_menu_buttons(user_id))
+        # Gộp thành DUY NHẤT 1 tin nhắn gửi tới khách hàng (kèm cả menu inline và bàn phím đáy)
+        await event.respond(
+            welcome_text,
+            buttons=get_main_menu_buttons(user_id)
+        )
     except Exception as e:
         logger.error(f"Lỗi khi xử lý lệnh /start: {e}", exc_info=True)
         try:
@@ -334,14 +336,7 @@ async def test_admin_handler(event):
     # 2. Đưa tài khoản vào chế độ test như khách mới (bỏ qua mọi đặc quyền admin tạm thời)
     test_regular_users.add(user_id)
 
-    # 3. Phản hồi thông báo và chạy lại lệnh /start như một khách hàng mới 100%
-    await event.respond(
-        "🔄 **[CHẾ ĐỘ TEST KHÁCH MỚI]**\n\n"
-        "✅ Toàn bộ thông tin tài khoản của bạn trên bot đã được **XÓA SẠCH**!\n"
-        "👉 Bạn hiện đang trải nghiệm bot **như một khách hàng hoàn toàn mới** (bị chặn nhóm, chưa giới thiệu bạn bè).\n\n"
-        "👇 _Hệ thống đang mở lại màn hình Chào mừng cho bạn..._"
-    )
-    # Tự động kích hoạt start_handler để hiện ngay thông báo bắt buộc vào nhóm
+    # 3. Kích hoạt trực tiếp luồng start_handler để hiện duy nhất 1 tin nhắn kiểm tra nhóm cho khách mới
     await start_handler(event)
 
 # ==================== XỬ LÝ CALLBACK QUERIES (NÚT BẤM) ====================
