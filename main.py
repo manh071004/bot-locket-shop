@@ -275,10 +275,8 @@ async def send_locket_free_referral_flow(event, user_id: int):
         "⚠️ _Lưu ý: Hai tài khoản sau khi liên kết với nhau sẽ được tính hoàn thành và không thể liên kết thêm với ai khác nữa._"
     )
 
-    # Nút chia sẻ nhanh link và sao chép mã
-    share_url = f"https://t.me/share/url?url={ref_link}&text=Bấm%20vào%20đây%20để%20nhận%20Locket%20Gold%20Free%20cùng%20mình%20nhé!"
     buttons = [
-        [Button.url("📲 Bấm Để Chia Sẻ Link Nhanh", share_url)],
+        [Button.inline("🔗 Sao Chép Link Giới Thiệu", f"copy_link_{ref_code}".encode())],
         [Button.inline(f"📋 Sao Chép Mã ({cmd_code})", f"copy_code_{ref_code}".encode())],
         [Button.inline("⬅️ Quay Lại Menu Chính", b"menu_main")]
     ]
@@ -556,9 +554,8 @@ async def callback_handler(event):
             "💡 **Mẹo:** Bạn có thể tự tạo 1 tài khoản Telegram clone rồi tự gửi link/mã để hoàn thành ngay trong 1 phút!\n"
             "⚠️ _Lưu ý: Hai tài khoản sau khi liên kết với nhau sẽ được tính hoàn thành và không thể liên kết thêm với ai khác nữa._"
         )
-        share_url = f"https://t.me/share/url?url={ref_link}&text=Bấm%20vào%20đây%20để%20nhận%20Locket%20Gold%20Free%20cùng%20mình%20nhé!"
         buttons = [
-            [Button.url("📲 Bấm Để Chia Sẻ Link Nhanh", share_url)],
+            [Button.inline("🔗 Sao Chép Link Giới Thiệu", f"copy_link_{ref_code}".encode())],
             [Button.inline(f"📋 Sao Chép Mã ({cmd_code})", f"copy_code_{ref_code}".encode())],
             [Button.inline("⬅️ Quay Lại Menu", b"menu_main")]
         ]
@@ -567,6 +564,21 @@ async def callback_handler(event):
         except Exception:
             await event.respond(ref_text, buttons=buttons)
         await event.answer()
+        return
+
+    # NÚT BẤM SAO CHÉP LINK GIỚI THIỆU
+    if data.startswith("copy_link_"):
+        code = data.replace("copy_link_", "").strip()
+        bot_info = await client.get_me()
+        bot_user = bot_info.username or "locketfreeshop_bot"
+        ref_link = f"https://t.me/{bot_user}?start={code}"
+        await event.answer("Đã sao chép link!", alert=False)
+        link_msg = (
+            f"🔗 **LINK GIỚI THIỆU CỦA BẠN:**\n\n"
+            f"`{ref_link}`\n\n"
+            f"👉 _(Chạm vào link trên để sao chép, sau đó gửi cho bạn bè để cùng nhận quà nhé!)_"
+        )
+        await event.respond(link_msg)
         return
 
     # NÚT BẤM SAO CHÉP MÃ LIÊN KẾT 8 KÝ TỰ
