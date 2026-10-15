@@ -572,16 +572,16 @@ async def callback_handler(event):
         bot_info = await client.get_me()
         bot_user = bot_info.username or "locketfreeshop_bot"
         ref_link = f"https://t.me/{bot_user}?start={code}"
-        await event.answer("Đã gửi link bên dưới, bạn chỉ cần bấm giữ để sao chép hoặc chuyển tiếp!", alert=False)
-        await event.respond(f"`{ref_link}`")
+        await event.answer()
+        await event.respond(ref_link)
         return
 
     # NÚT BẤM SAO CHÉP MÃ LIÊN KẾT 8 KÝ TỰ
     if data.startswith("copy_code_"):
         code = data.replace("copy_code_", "").strip()
         cmd = f"/{code}"
-        await event.answer("Đã gửi mã bên dưới, bạn chỉ cần chạm vào để sao chép!", alert=False)
-        await event.respond(f"`{cmd}`")
+        await event.answer()
+        await event.respond(cmd)
         return
 
     # BẮT ĐẦU NHẬP USERNAME BẠN BÈ
