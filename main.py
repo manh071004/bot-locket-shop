@@ -400,28 +400,29 @@ async def support_command_handler(event):
     text, buttons = get_support_text_and_buttons()
     await event.respond(text, buttons=buttons)
 
-@client.on(events.NewMessage(pattern=r"^(/admin|👑 Bảng Điều Khiển Admin)$"))
+@client.on(events.NewMessage(pattern=r"(?i)^/admin(@\w+)?$|^👑 Bảng Điều Khiển Admin$"))
 async def admin_command_handler(event):
     user_id = event.sender_id
     if not is_admin(user_id):
-        await event.respond("⛔ Bạn không có quyền truy cập bảng quản trị!")
+        await event.respond(f"⛔ Bạn không có quyền truy cập bảng quản trị! (ID: `{user_id}` chưa được thêm vào ADMIN_ID)")
         return
     await show_admin_panel(event, is_callback=False)
 
-@client.on(events.NewMessage(pattern=r"^/backup"))
+@client.on(events.NewMessage(pattern=r"(?i)^/backup(@\w+)?$"))
 async def backup_command_handler(event):
     user_id = event.sender_id
     if not is_admin(user_id):
-        await event.respond("⛔ Bạn không có quyền gọi lệnh backup!")
+        await event.respond(f"⛔ Bạn không có quyền gọi lệnh backup! (ID: `{user_id}`)")
         return
     await perform_backup_to_chat(event.chat_id)
 
 # ==================== LỆNH BÍ MẬT TEST DÀNH CHO ADMIN (/testadmin) ====================
 # Lệnh này không hiển thị đề xuất trong Menu BotFather
-@client.on(events.NewMessage(pattern=r"(?i)^/testadmin$"))
+@client.on(events.NewMessage(pattern=r"(?i)^/testadmin(@\w+)?$"))
 async def test_admin_handler(event):
     user_id = event.sender_id
     if not is_admin(user_id):
+        await event.respond(f"⛔ Lệnh này chỉ dành riêng cho Admin! (ID của bạn: `{user_id}` chưa có trong danh sách ADMIN_ID)")
         return
 
     # 1. Xóa hoàn toàn toàn bộ dữ liệu tài khoản này trong cơ sở dữ liệu
@@ -438,14 +439,22 @@ async def test_admin_handler(event):
 
     # 3. Gửi lại thông báo bắt buộc xác minh tham gia Kênh cộng đồng
     prompt_text, buttons = get_join_group_prompt(user_id)
-    await event.respond(prompt_text, buttons=buttons)
+    intro = (
+        "🧪 **[CHẾ ĐỘ TEST KHÁCH MỚI ĐÃ BẬT]**\n\n"
+        f"• Đã xóa sạch dữ liệu tài khoản (`{user_id}`) trong database.\n"
+        f"• Bạn đang trải nghiệm giao diện như một khách hàng mới lần đầu vào bot.\n"
+        f"• Gõ `/untest` bất kỳ lúc nào để khôi phục lại quyền Admin.\n\n"
+        "────────────────────\n\n"
+    )
+    await event.respond(intro + prompt_text, buttons=buttons)
 
-@client.on(events.NewMessage(pattern=r"(?i)^/(untest|endtest)$"))
+@client.on(events.NewMessage(pattern=r"(?i)^/(untest|endtest)(@\w+)?$"))
 async def untest_handler(event):
     user_id = event.sender_id
-    if is_admin(user_id):
-        test_regular_users.discard(user_id)
-        await event.respond("👑 **Đã thoát chế độ test!** Tài khoản đã khôi phục toàn bộ đặc quyền Quản trị viên.")
+    if not is_admin(user_id):
+        return
+    test_regular_users.discard(user_id)
+    await event.respond("👑 **Đã thoát chế độ test!** Tài khoản của bạn đã được khôi phục đầy đủ đặc quyền Quản trị viên.")
 
 async def start_admin_deliver_flow(event, order_id: str, admin_id: int, is_callback: bool = False):
     """Quy trình bàn giao đơn hàng chuyên biệt cho từng dịch vụ:
