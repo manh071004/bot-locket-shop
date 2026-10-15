@@ -1,17 +1,30 @@
 """
-Handler /start, /muagoi, /taobot, /web, /hotro
-Phục vụ 2 chức năng:
-1. Giới thiệu & Bán 2 gói tạo bot (50k/tháng & 250k vĩnh viễn) kèm thanh toán VietQR
-2. Nhận deep link của shop con: t.me/BOT?start=store_SLUG
+Handler /start và Menu Sản Phẩm:
+1. Gợi ý lệnh duy nhất: /start
+2. Bàn phím Menu dưới đáy màn hình (ReplyKeyboardMarkup):
+   [🛍️ Bảng Giá Sản Phẩm]  [🛒 Giỏ Hàng]
+   [📋 Đơn Hàng Của Tôi]   [💬 Hỗ Trợ]
+3. Menu tương tác bấm chọn sản phẩm (Inline Keyboard)
 """
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from db_helper import get_store_by_slug, get_categories_by_store, get_products_by_store
 from cart_store import set_user_store, get_user_store, get_cart_count
 import urllib.parse
 
-DASHBOARD_URL = "http://localhost:5174"
+DASHBOARD_URL = "http://127.0.0.1:5174"
 ADMIN_CONTACT = "manhkmhd2004"
+
+
+def get_bottom_reply_keyboard():
+    """Bàn phím menu dưới đáy chat tiện lợi cho khách bấm chọn ngay"""
+    return ReplyKeyboardMarkup(
+        [
+            ["🛍️ Bảng Giá Sản Phẩm", "🛒 Giỏ Hàng"],
+            ["📋 Đơn Hàng Của Tôi", "💬 Hỗ Trợ Khách Hàng"]
+        ],
+        resize_keyboard=True
+    )
 
 
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -29,107 +42,56 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await show_store_home(update, context, store)
                 return
 
-    # Không có deep link → hiển thị trang Bảng giá 2 gói dịch vụ tạo bot
+    # Không có deep link → Hiển thị Menu chính với 2 gói tạo bot
     await show_service_intro(update)
-
-
-async def muagoi_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Lệnh /muagoi: Hiển thị 2 gói tạo bot"""
-    await show_service_intro(update)
-
-
-async def taobot_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Lệnh /taobot: Hướng dẫn tạo bot bán hàng riêng"""
-    text = (
-        "🤖 <b>HƯỚNG DẪN TẠO BOT BÁN HÀNG TELEGRAM RIÊNG</b>\n\n"
-        "Chỉ với 3 bước đơn giản:\n\n"
-        "1️⃣ <b>Bước 1:</b> Mua một trong 2 gói dịch vụ:\n"
-        "   • ⚡ Gói Tháng: <b>50.000đ</b>\n"
-        "   • 👑 Gói Vĩnh Viễn: <b>250.000đ</b> (Trọn đời)\n\n"
-        "2️⃣ <b>Bước 2:</b> Đăng nhập vào trang web quản trị của bạn:\n"
-        f"   👉 <a href='{DASHBOARD_URL}'>{DASHBOARD_URL}</a>\n"
-        "   • Đặt tên shop, số tài khoản ngân hàng nhận tiền\n"
-        "   • Đăng tải sản phẩm và giá bán\n\n"
-        "3️⃣ <b>Bước 3:</b> Nhận <b>Link Bot Riêng</b> & Mã QR của shop bạn để gửi cho khách hàng mua hàng!\n"
-    )
-    keyboard = [
-        [InlineKeyboardButton("💎 Mua Gói Ngay", callback_data="show_plans")],
-        [InlineKeyboardButton("🌐 Vào Web Quản Trị", url=DASHBOARD_URL)],
-    ]
-    await update.effective_message.reply_text(
-        text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-
-async def web_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Lệnh /web: Link đăng nhập trang quản trị"""
-    text = (
-        "🌐 <b>TRANG WEB QUẢN TRỊ CỬA HÀNG (DASHBOARD)</b>\n\n"
-        f"Truy cập: <a href='{DASHBOARD_URL}'>{DASHBOARD_URL}</a>\n\n"
-        "Tại đây bạn có thể:\n"
-        "• Thêm / sửa / xóa mặt hàng & giá bán\n"
-        "• Cài đặt số tài khoản ngân hàng nhận tiền chuyển khoản\n"
-        "• Theo dõi đơn hàng và doanh thu thời gian thực\n"
-        "• Lấy Link Bot riêng và mã QR chia sẻ cho khách hàng"
-    )
-    keyboard = [[InlineKeyboardButton("🚀 Mở Trang Quản Trị Web", url=DASHBOARD_URL)]]
-    await update.effective_message.reply_text(
-        text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-
-async def hotro_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Lệnh /hotro: Hỗ trợ kỹ thuật"""
-    text = (
-        "💬 <b>HỖ TRỢ KỸ THUẬT & TƯ VẤN 24/7</b>\n\n"
-        f"• Admin hỗ trợ: @{ADMIN_CONTACT}\n"
-        "• Hỗ trợ kích hoạt bot, kết nối thanh toán PayOS và giải đáp mọi thắc mắc."
-    )
-    keyboard = [[InlineKeyboardButton("📩 Nhắn Tin Admin Ngay", url=f"https://t.me/{ADMIN_CONTACT}")]]
-    await update.effective_message.reply_text(
-        text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard)
-    )
 
 
 async def show_service_intro(update: Update):
-    """Trang giới thiệu 2 gói dịch vụ tạo bot bán hàng."""
+    """Trang chủ hiển thị Menu chọn gói sản phẩm."""
+    user = update.effective_user
     text = (
-        "🤖 <b>NỀN TẢNG TẠO BOT BÁN HÀNG TELEGRAM TỰ ĐỘNG</b>\n\n"
-        "Chào mừng bạn đến với hệ thống tạo bot bán hàng chuyên nghiệp!\n"
-        "Khi mua gói, bạn sẽ được cấp <b>Web cài đặt riêng</b> để tự do đăng mặt hàng, giá tiền, số tài khoản ngân hàng. Bot sẽ tự cập nhật và nhả <b>Link bot riêng</b> cho khách của bạn!\n\n"
+        f"👋 <b>Xin chào {user.first_name or 'bạn'}!</b>\n\n"
+        "Chào mừng bạn đến với <b>Hệ Thống Tạo Bot Bán Hàng Telegram</b>.\n"
+        "Sau khi mua gói, bạn sẽ có ngay <b>Trang Web riêng</b> để tự cài đặt sản phẩm, giá tiền và link bot riêng để bán hàng tự động.\n\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "💎 <b>BẢNG GIÁ 2 GÓI DỊCH VỤ:</b>\n\n"
+        "🛍️ <b>MENU CÁC GÓI SẢN PHẨM:</b>\n\n"
         "⚡ <b>1. GÓI 1 THÁNG: 50.000 VNĐ</b>\n"
-        "• Thời hạn: 30 ngày sử dụng\n"
-        "• Đăng sản phẩm & đơn hàng không giới hạn\n"
-        "• Tự động thanh toán chuyển khoản VietQR\n"
-        "• Báo đơn tức thì về Telegram của bạn\n\n"
+        "• Dùng 30 ngày đầy đủ mọi tính năng\n"
+        "• Không giới hạn mặt hàng & đơn hàng\n"
+        "• Tự động thanh toán chuyển khoản VietQR\n\n"
         "👑 <b>2. GÓI VĨNH VIỄN (LIFETIME): 250.000 VNĐ</b>\n"
         "• Sở hữu <b>TRỌN ĐỜI</b> - KHÔNG BAO GIỜ hết hạn!\n"
-        "• Mọi tính năng cao cấp nhất\n"
-        "• Cập nhật tính năng mới miễn phí mãi mãi\n"
+        "• Ưu tiên cập nhật tính năng mới mãi mãi\n"
         "• Tiết kiệm chi phí tối đa (Khuyên dùng 🔥)\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "👇 <b>Bấm chọn gói bạn muốn mua bên dưới:</b>"
+        "👇 <b>Bấm vào gói bên dưới để xem chi tiết & nhận mã QR thanh toán:</b>"
     )
+
     keyboard = [
-        [InlineKeyboardButton("⚡ Mua Gói Tháng (50.000đ)", callback_data="buy_plan_monthly")],
-        [InlineKeyboardButton("👑 Mua Gói Vĩnh Viễn (250.000đ)", callback_data="buy_plan_lifetime")],
+        [InlineKeyboardButton("⚡ [50.000đ] Gói 1 Tháng", callback_data="buy_plan_monthly")],
+        [InlineKeyboardButton("👑 [250.000đ] Gói Vĩnh Viễn (Lifetime)", callback_data="buy_plan_lifetime")],
         [
             InlineKeyboardButton("🌐 Web Quản Trị", url=DASHBOARD_URL),
-            InlineKeyboardButton("💬 Hỗ Trợ", url=f"https://t.me/{ADMIN_CONTACT}"),
+            InlineKeyboardButton("💬 Hỗ Trợ Admin", url=f"https://t.me/{ADMIN_CONTACT}"),
         ]
     ]
+
     reply_markup = InlineKeyboardMarkup(keyboard)
-    if update.callback_query:
+
+    # Nếu gửi từ tin nhắn gõ /start -> kèm theo bàn phím dưới đáy
+    if update.message:
+        await update.message.reply_text(
+            "📱 Bàn phím Menu chức năng đã sẵn sàng bên dưới!",
+            reply_markup=get_bottom_reply_keyboard()
+        )
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    elif update.callback_query:
         await update.callback_query.answer()
         await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=reply_markup)
-    else:
-        await update.effective_message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
 
 
 async def plan_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Xử lý bấm nút mua gói tạo bot trên Telegram"""
+    """Xử lý chọn sản phẩm / gói từ Menu"""
     query = update.callback_query
     await query.answer()
     data = query.data
@@ -146,29 +108,30 @@ async def plan_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
         plan_code = "LIFETIME" if is_lifetime else "THANG"
         order_memo = f"BOT {plan_code} {user.id}"
 
-        # Tạo link VietQR chuẩn
+        # VietQR chuẩn MB Bank
         bank_bin = "970422" # MB Bank
-        bank_acc = "0865768828" # STK mẫu / MB
+        bank_acc = "0865768828"
         bank_name = "MB BANK"
         bank_owner = "VO DUC MANH"
         qr_url = f"https://img.vietqr.io/image/{bank_bin}-{bank_acc}-compact2.png?amount={price}&addInfo={urllib.parse.quote(order_memo)}&accountName={urllib.parse.quote(bank_owner)}"
 
         text = (
-            f"💳 <b>THANH TOÁN GÓI {plan_name}</b>\n\n"
+            f"🛒 <b>CHI TIẾT ĐƠN HÀNG: {plan_name}</b>\n\n"
+            f"• <b>Sản phẩm:</b> Tạo Bot Bán Hàng Telegram ({plan_name})\n"
             f"• <b>Giá thanh toán:</b> <code>{price:,}đ</code>\n"
-            f"• <b>Thời hạn:</b> {'Vĩnh viễn (Trọn đời)' if is_lifetime else '30 ngày'}\n\n"
-            "🏦 <b>THÔNG TIN CHUYỂN KHOẢN (VietQR):</b>\n"
+            f"• <b>Hạn dùng:</b> {'Vĩnh viễn trọn đời' if is_lifetime else '30 ngày'}\n\n"
+            "🏦 <b>THÔNG TIN CHUYỂN KHOẢN (Quét mã VietQR):</b>\n"
             f"• Ngân hàng: <b>{bank_name}</b>\n"
-            f"• Số tài khoản: <code>{bank_acc}</code> (chạm để copy)\n"
+            f"• Số tài khoản: <code>{bank_acc}</code> (chạm để sao chép)\n"
             f"• Chủ tài khoản: <b>{bank_owner}</b>\n"
-            f"• Nội dung chuyển khoản: <code>{order_memo}</code>\n\n"
-            "⚠️ <i>Lưu ý: Vui lòng ghi đúng nội dung để hệ thống tự động nhận diện và kích hoạt bot cho bạn!</i>"
+            f"• Nội dung CK: <code>{order_memo}</code>\n\n"
+            "👉 <i>Sau khi quét mã thanh toán, bấm nút bên dưới để xác nhận:</i>"
         )
 
         keyboard = [
             [InlineKeyboardButton("✅ Tôi Đã Chuyển Khoản", callback_data=f"paid_check_{plan_code}_{user.id}")],
-            [InlineKeyboardButton("💬 Hỗ Trợ Trực Tiếp", url=f"https://t.me/{ADMIN_CONTACT}")],
-            [InlineKeyboardButton("⬅️ Quay Lại Bảng Giá", callback_data="show_plans")],
+            [InlineKeyboardButton("💬 Hỗ Trợ Admin", url=f"https://t.me/{ADMIN_CONTACT}")],
+            [InlineKeyboardButton("⬅️ Quay Lại Menu Sản Phẩm", callback_data="show_plans")],
         ]
 
         try:
@@ -185,24 +148,62 @@ async def plan_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
     if data.startswith("paid_check_"):
         await query.edit_message_caption(
             caption=(
-                "⏳ <b>HỆ THỐNG ĐANG XÁC NHẬN GIAO DỊCH...</b>\n\n"
-                "Cảm ơn bạn đã thanh toán! Hệ thống đang kiểm tra tiền vào tài khoản và sẽ kích hoạt dịch vụ cho bạn trong ít phút.\n\n"
-                f"👉 Trong lúc chờ, bạn có thể truy cập Web quản trị để làm quen trước: <a href='{DASHBOARD_URL}'>{DASHBOARD_URL}</a>\n"
-                f"👉 Hoặc nhắn tin trực tiếp cho Admin nếu cần gấp: @{ADMIN_CONTACT}"
+                "⏳ <b>ĐÃ GHI NHẬN YÊU CẦU XÁC NHẬN!</b>\n\n"
+                "Cảm ơn bạn đã thanh toán. Hệ thống đang đối soát và sẽ kích hoạt dịch vụ cho bạn trong ít phút.\n\n"
+                f"👉 Đăng nhập web quản trị: <a href='{DASHBOARD_URL}'>{DASHBOARD_URL}</a>\n"
+                f"👉 Hoặc nhắn tin Admin: @{ADMIN_CONTACT}"
             ),
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🌐 Vào Web Quản Trị", url=DASHBOARD_URL)],
                 [InlineKeyboardButton("💬 Nhắn Tin Admin", url=f"https://t.me/{ADMIN_CONTACT}")],
-                [InlineKeyboardButton("⬅️ Về Trang Chủ", callback_data="show_plans")],
+                [InlineKeyboardButton("⬅️ Về Menu Sản Phẩm", callback_data="show_plans")],
             ])
         )
 
 
-# ─── Phần xử lý Deep Link cho Shop Con ─────────────────────────────
+async def bottom_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Bắt các sự kiện khi khách bấm nút ở bàn phím dưới đáy màn hình"""
+    text = (update.message.text or "").strip()
+
+    if "Bảng Giá" in text or "Sản Phẩm" in text:
+        await show_service_intro(update)
+    elif "Giỏ Hàng" in text:
+        await update.message.reply_text(
+            "🛒 <b>Giỏ Hàng Của Bạn</b>\n\n"
+            "Bạn chưa chọn sản phẩm nào vào giỏ. Hãy bấm vào <b>'🛍️ Bảng Giá Sản Phẩm'</b> để chọn gói dịch vụ!",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🛍️ Xem Bảng Giá Sản Phẩm", callback_data="show_plans")]
+            ])
+        )
+    elif "Đơn Hàng" in text:
+        await update.message.reply_text(
+            "📋 <b>Lịch Sử Đơn Hàng</b>\n\n"
+            "Đăng nhập trang quản trị để xem chi tiết toàn bộ đơn hàng của bạn: "
+            f"<a href='{DASHBOARD_URL}'>{DASHBOARD_URL}</a>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🌐 Vào Web Quản Trị", url=DASHBOARD_URL)]
+            ])
+        )
+    elif "Hỗ Trợ" in text:
+        await update.message.reply_text(
+            "💬 <b>HỖ TRỢ KHÁCH HÀNG 24/7</b>\n\n"
+            f"Mọi thắc mắc về cài đặt bot hoặc thanh toán, vui lòng liên hệ Admin:\n"
+            f"👉 @{ADMIN_CONTACT}",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📩 Nhắn Tin Cho Admin", url=f"https://t.me/{ADMIN_CONTACT}")]
+            ])
+        )
+    else:
+        await show_service_intro(update)
+
+
+# ─── Deep link cho Shop con ────────────────────────────────────────
 
 async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Quay về menu chính của store đang dùng."""
     user = update.effective_user
     slug = get_user_store(user.id)
     if not slug:
@@ -222,7 +223,6 @@ async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def show_store_home(update: Update, context: ContextTypes.DEFAULT_TYPE, store: dict):
-    """Hiển thị trang chủ cửa hàng của khách hàng theo deep link."""
     user = update.effective_user
     categories = await get_categories_by_store(store["id"])
     cart_count = get_cart_count(user.id, store["store_slug"])
@@ -277,7 +277,6 @@ async def show_store_home(update: Update, context: ContextTypes.DEFAULT_TYPE, st
 
 
 async def show_store_home_edit(update: Update, context: ContextTypes.DEFAULT_TYPE, store: dict):
-    """Edit message về trang chủ cửa hàng."""
     user = update.effective_user
     categories = await get_categories_by_store(store["id"])
     cart_count = get_cart_count(user.id, store["store_slug"])

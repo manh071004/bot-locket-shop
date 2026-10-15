@@ -7,8 +7,7 @@ import logging
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 from config import BOT_TOKEN
 from handlers.start import (
-    start_handler, main_menu_handler,
-    muagoi_handler, taobot_handler, web_handler, hotro_handler, plan_callback_handler
+    start_handler, main_menu_handler, plan_callback_handler, bottom_menu_handler
 )
 from handlers.catalog import catalog_handler, product_detail_handler
 from handlers.cart import cart_handler, cart_action_handler
@@ -25,15 +24,11 @@ logger = logging.getLogger(__name__)
 def create_application() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Handlers cho dịch vụ tạo bot & bảng giá
+    # Lệnh duy nhất: /start
     app.add_handler(CommandHandler("start", start_handler))
-    app.add_handler(CommandHandler("muagoi", muagoi_handler))
-    app.add_handler(CommandHandler("taobot", taobot_handler))
-    app.add_handler(CommandHandler("web", web_handler))
-    app.add_handler(CommandHandler("hotro", hotro_handler))
-    app.add_handler(CommandHandler("menu", main_menu_handler))
+    app.add_handler(CommandHandler("menu", start_handler))
 
-    # Callback query handlers
+    # Callback query handlers (chọn gói, chọn sản phẩm, giỏ hàng)
     app.add_handler(CallbackQueryHandler(plan_callback_handler, pattern=r"^(buy_plan_|paid_check_|show_plans)"))
     app.add_handler(CallbackQueryHandler(catalog_handler, pattern=r"^cat_"))
     app.add_handler(CallbackQueryHandler(product_detail_handler, pattern=r"^prod_"))
@@ -43,8 +38,8 @@ def create_application() -> Application:
     app.add_handler(CallbackQueryHandler(admin_handler, pattern=r"^admin_"))
     app.add_handler(CallbackQueryHandler(main_menu_handler, pattern=r"^home$"))
 
-    # Text message handler (fallback)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu_handler))
+    # Bắt sự kiện bấm nút bàn phím Menu dưới đáy màn hình
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bottom_menu_handler))
 
     return app
 
