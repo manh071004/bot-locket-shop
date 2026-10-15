@@ -1,4 +1,10 @@
-# Thêm thư viện cần thiết cho bot-tao vào đây
-# Ví dụ:
-# telethon>=1.36.0
-# python-dotenv>=1.0.0
+python-telegram-bot==21.6
+sqlalchemy==2.0.35
+asyncpg==0.29.0
+httpx==0.27.2
+python-dotenv==1.0.1
+aiofiles==24.1.0
+qrcode==7.4.2
+Pillow==10.4.0
+redis==5.1.0
+psycopg2-binary==2.9.9

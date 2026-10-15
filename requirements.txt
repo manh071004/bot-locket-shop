@@ -1,6 +1,10 @@
 telethon>=1.36.0
+python-telegram-bot>=21.0
 python-dotenv>=1.0.0
 payos>=1.1.0
 qrcode>=7.4.2
 pillow>=10.0.0
 requests>=2.31.0
+asyncpg>=0.29.0
+sqlalchemy>=2.0.0
+aiofiles>=24.0.0
