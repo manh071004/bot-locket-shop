@@ -112,10 +112,44 @@ class Database:
             if "referred_friend_id" not in self.data["users"][uid]:
                 self.data["users"][uid]["referred_friend_id"] = None
                 updated = True
+            if "ref_code" not in self.data["users"][uid]:
+                # Tạo mã giới thiệu 8 ký tự ngẫu nhiên duy nhất cho user
+                self.data["users"][uid]["ref_code"] = self._generate_unique_ref_code()
+                updated = True
+            if "pending_referrer_id" not in self.data["users"][uid]:
+                self.data["users"][uid]["pending_referrer_id"] = None
+                updated = True
             if updated:
                 self.save()
 
         return self.data["users"][uid]
+
+    def _generate_unique_ref_code(self) -> str:
+        """Tạo mã 8 ký tự chữ cái/số ngẫu nhiên không trùng lặp"""
+        import random, string
+        while True:
+            code = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+            # Đảm bảo mã chưa ai sở hữu
+            exists = any(u.get("ref_code") == code for u in self.data["users"].values())
+            if not exists:
+                return code
+
+    def get_user_ref_code(self, user_id: int) -> str:
+        """Lấy mã giới thiệu 8 ký tự của user"""
+        user = self.get_or_create_user(user_id)
+        if not user.get("ref_code"):
+            code = self._generate_unique_ref_code()
+            user["ref_code"] = code
+            self.save()
+        return user["ref_code"]
+
+    def find_user_by_ref_code(self, code: str):
+        """Tìm user qua mã giới thiệu 8 ký tự (hoặc lệnh /code)"""
+        clean_code = code.strip().lstrip("/").lower()
+        for u in self.data["users"].values():
+            if u.get("ref_code") and u.get("ref_code").lower() == clean_code:
+                return u
+        return None
 
     def is_group_verified(self, user_id: int) -> bool:
         """Kiểm tra xem người dùng đã xác minh vào nhóm trong vòng 7 ngày chưa"""
@@ -142,26 +176,51 @@ class Database:
                 return u
         return None
 
-    def is_friend_already_used_as_referral(self, friend_id: int) -> bool:
-        """Kiểm tra xem ID bạn bè này đã từng được ai điền để nhận quà trước đó chưa (Chống dùng 1 người cho nhiều tài khoản)"""
+    def is_user_already_linked(self, user_id: int) -> bool:
+        """Kiểm tra xem tài khoản này đã được liên kết giới thiệu với bất kỳ ai chưa"""
+        uid = str(user_id)
+        user = self.data["users"].get(uid)
+        if not user:
+            return False
+        # Đã giới thiệu cho ai đó
+        if user.get("referred_friend_id"):
+            return True
+        # Đã được ai đó giới thiệu
         for u in self.data["users"].values():
-            if u.get("referred_friend_id") == friend_id:
+            if u.get("referred_friend_id") == user_id:
                 return True
         return False
 
+    def link_referral_mutual(self, user_a_id: int, user_b_id: int) -> bool:
+        """Liên kết giới thiệu 2 chiều giữa 2 tài khoản (Cả 2 đều vượt qua bước giới thiệu bạn bè và không liên kết ai khác nữa)"""
+        if user_a_id == user_b_id:
+            return False
+        uid_a = str(user_a_id)
+        uid_b = str(user_b_id)
+        if uid_a not in self.data["users"] or uid_b not in self.data["users"]:
+            return False
+        # Nếu bất kỳ tài khoản nào đã liên kết thì từ chối
+        if self.is_user_already_linked(user_a_id) or self.is_user_already_linked(user_b_id):
+            return False
+        
+        self.data["users"][uid_a]["referred_friend_id"] = user_b_id
+        self.data["users"][uid_b]["referred_friend_id"] = user_a_id
+        self.save()
+        return True
+
     def reset_user_completely(self, user_id: int):
         """Xóa toàn bộ thông tin tài khoản khỏi bot (đưa về trạng thái khách hàng mới 100%)
-           Đồng thời giải phóng toàn bộ user bạn bè mà tài khoản này đã từng điền để có thể test lại lần 2."""
+           Đồng thời giải phóng toàn bộ liên kết để có thể test lại lần 2."""
         uid = str(user_id)
         if uid in self.data["users"]:
-            # Giải phóng bạn bè mà user này đã dùng để nhận thưởng
-            self.data["users"][uid]["referred_friend_id"] = None
             del self.data["users"][uid]
 
-        # Xóa liên kết nếu người này từng được ai đó điền làm bạn bè giới thiệu
+        # Xóa liên kết của người khác đang liên kết với người này
         for u in self.data["users"].values():
             if u.get("referred_friend_id") == user_id:
                 u["referred_friend_id"] = None
+            if u.get("pending_referrer_id") == user_id:
+                u["pending_referrer_id"] = None
         self.save()
 
     def set_user_referral_success(self, user_id: int, friend_id: int):

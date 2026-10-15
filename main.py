@@ -145,10 +145,22 @@ async def start_handler(event):
         first_name = (sender.first_name if sender else "Khách hàng") or "Khách hàng"
 
         # Lưu thông tin khách hàng
-        db.get_or_create_user(user_id, username, first_name)
+        curr_user = db.get_or_create_user(user_id, username, first_name)
         user_states.pop(user_id, None)
 
-        # 1. KIỂM TRA ĐIỀU KIỆN VÀO NHÓM CỘNG ĐỒNG (HẠN 7 NGÀY)
+        # XỬ LÝ PHƯƠNG THỨC 1: BẠN BÈ VÀO BOT QUA LINK GIỚI THIỆU (/start <ref_code>)
+        raw_msg = (event.raw_text or "").strip()
+        parts = raw_msg.split()
+        if len(parts) > 1:
+            ref_param = parts[1].strip()
+            referrer = db.find_user_by_ref_code(ref_param)
+            if referrer and referrer["id"] != user_id:
+                # Nếu tài khoản này chưa liên kết với ai, lưu người giới thiệu đang chờ xác minh
+                if not db.is_user_already_linked(user_id) and not db.is_user_already_linked(referrer["id"]):
+                    curr_user["pending_referrer_id"] = referrer["id"]
+                    db.save()
+
+        # 1. KIỂM TRA ĐIỀU KIỆN VÀO NHÓM/KÊNH CỘNG ĐỒNG (HẠN 7 NGÀY)
         is_exempt = is_admin(user_id) and (user_id not in test_regular_users)
         if not is_exempt and not db.is_group_verified(user_id):
             is_member = await check_user_in_group(user_id)
@@ -156,6 +168,23 @@ async def start_handler(event):
                 prompt_text, buttons = get_join_group_prompt(user_id)
                 await event.respond(prompt_text, buttons=buttons)
                 return
+
+        # Nếu đã ở trong kênh rồi và có pending_referrer_id, kích hoạt liên kết ngay
+        pending_ref = curr_user.get("pending_referrer_id")
+        if pending_ref and not db.is_user_already_linked(user_id):
+            linked = db.link_referral_mutual(user_id, pending_ref)
+            if linked:
+                curr_user["pending_referrer_id"] = None
+                db.save()
+                try:
+                    await client.send_message(
+                        pending_ref,
+                        f"🎉 **BẠN BÈ ĐÃ KẾT NỐI THÀNH CÔNG!**\n\n"
+                        f"✅ Người bạn của bạn (@{username or first_name}) đã tham gia Kênh và hoàn thành điều kiện.\n"
+                        f"✨ Hai tài khoản đã được liên kết thành công! Bây giờ bạn có thể bấm **🎁 Nhận Locket Gold Free** để lấy link mở ứng dụng ngay lập tức!"
+                    )
+                except Exception:
+                    pass
 
         welcome_text = (
             f"👋 **Chào mừng {first_name} đến với Shop Dịch Vụ Bản Quyền!**\n\n"
@@ -204,7 +233,7 @@ async def products_command_handler(event):
     await event.respond(text, buttons=get_products_menu_buttons())
 
 async def send_locket_free_referral_flow(event, user_id: int):
-    """Xử lý hiển thị luồng nhận Locket Gold Free theo điều kiện giới thiệu bạn bè"""
+    """Xử lý hiển thị luồng nhận Locket Gold Free theo điều kiện giới thiệu bạn bè (Hỗ trợ 2 phương thức: Link & Mã 8 ký tự)"""
     user_data = db.get_or_create_user(user_id)
     friend_id = user_data.get("referred_friend_id")
 
@@ -213,7 +242,7 @@ async def send_locket_free_referral_flow(event, user_id: int):
     if is_exempt or friend_id:
         text_success = (
             "🎉 **CHÚC MỪNG BẠN ĐÃ ĐỦ ĐIỀU KIỆN!**\n\n"
-            "✅ Bạn đã hoàn thành nhiệm vụ giới thiệu bạn bè và tham gia nhóm cộng đồng.\n"
+            "✅ Bạn đã hoàn thành nhiệm vụ giới thiệu bạn bè và tham gia kênh cộng đồng.\n"
             "👇 Bấm nút bên dưới để mở ứng dụng nhận Locket Gold Free ngay lập tức:"
         )
         buttons = [
@@ -223,20 +252,34 @@ async def send_locket_free_referral_flow(event, user_id: int):
         await event.respond(text_success, buttons=buttons)
         return
 
-    # Chưa đủ điều kiện: yêu cầu giới thiệu bạn bè
+    # Lấy mã ref_code 8 ký tự ngẫu nhiên của khách
+    ref_code = db.get_user_ref_code(user_id)
+    bot_info = await client.get_me()
+    bot_user = bot_info.username or "locketfreeshop_bot"
+    ref_link = f"https://t.me/{bot_user}?start={ref_code}"
+    cmd_code = f"/{ref_code}"
+
     ref_text = (
         "🎁 **ĐIỀU KIỆN NHẬN LOCKET GOLD FREE (0Đ)**\n\n"
-        "Để tránh spam và nhận link ứng dụng Locket Gold Free, bạn chỉ cần thực hiện nhiệm vụ sau:\n\n"
-        "1️⃣ **Giới thiệu 1 người bạn** (hoặc dùng 1 tài khoản phụ/clone của bạn):\n"
-        "   • Người bạn đó phải bấm vào bot và gửi lệnh `/start`\n"
-        "   • Người bạn đó phải tham gia nhóm cộng đồng của shop.\n\n"
-        "2️⃣ Sau đó bạn bấm nút **'✍️ Nhập Username Người Bạn'** bên dưới để bot quét kiểm tra.\n\n"
-        "💡 **Mẹo nhỏ:** Bạn có thể tự tạo 1 tài khoản Telegram phụ (clone), hoặc nhờ người thân/bạn bè bấm vào bot là xong ngay trong 1 phút!\n"
-        "⚠️ _Mỗi tài khoản bạn bè chỉ được tính hợp lệ cho 1 người giới thiệu duy nhất (hệ thống lưu ID cố định chống gian lận)._"
+        "Để nhận link mở ứng dụng Locket Gold Free, bạn chỉ cần **kết nối với 1 người bạn** (hoặc 1 nick phụ/clone của bạn) qua **1 trong 2 cách sau**:\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🔗 **CÁCH 1: GỬI LINK GIỚI THIỆU TRỰC TIẾP**\n"
+        f"• Link của bạn: `{ref_link}`\n"
+        "👉 Gửi link này cho bạn bè bấm vào. Khi bạn bè bấm **/start** và **tham gia Kênh cộng đồng**, hệ thống sẽ tự động liên kết 2 tài khoản ngay lập tức!\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🔑 **CÁCH 2: SAO CHÉP MÃ LỆNH 8 KÝ TỰ**\n"
+        f"• Mã kết nối của bạn: `{cmd_code}`\n"
+        "👉 Bạn của bạn chỉ cần vào bot, vượt qua bước tham gia Kênh, sau đó **nhắn tin đúng mã trên** vào bot là 2 tài khoản tự động liên kết thành công!\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "💡 **Mẹo:** Bạn có thể tự tạo 1 tài khoản Telegram clone rồi tự gửi link/mã để hoàn thành ngay trong 1 phút!\n"
+        "⚠️ _Lưu ý: Hai tài khoản sau khi liên kết với nhau sẽ được tính hoàn thành và không thể liên kết thêm với ai khác nữa._"
     )
+
+    # Nút chia sẻ nhanh link và sao chép mã
+    share_url = f"https://t.me/share/url?url={ref_link}&text=Bấm%20vào%20đây%20để%20nhận%20Locket%20Gold%20Free%20cùng%20mình%20nhé!"
     buttons = [
-        [Button.inline("✍️ Nhập Username Người Bạn Đã Mời", b"enter_referral_friend")],
-        [Button.inline("⬅️ Quay Lại Menu", b"menu_main")]
+        [Button.url("📲 Bấm Để Chia Sẻ Link Nhanh", share_url)],
+        [Button.inline("⬅️ Quay Lại Menu Chính", b"menu_main")]
     ]
     await event.respond(ref_text, buttons=buttons)
 
@@ -433,6 +476,25 @@ async def callback_handler(event):
         if is_member:
             db.set_group_verified(user_id)
             await event.answer("🎉 Tuyệt vời! Bạn đã xác minh vào kênh thành công.", alert=True)
+
+            # Tự động kích hoạt liên kết nếu người này vào qua link của bạn bè
+            curr_user = db.get_or_create_user(user_id)
+            pending_ref = curr_user.get("pending_referrer_id")
+            if pending_ref and not db.is_user_already_linked(user_id):
+                linked = db.link_referral_mutual(user_id, pending_ref)
+                if linked:
+                    curr_user["pending_referrer_id"] = None
+                    db.save()
+                    try:
+                        await client.send_message(
+                            pending_ref,
+                            f"🎉 **BẠN BÈ ĐÃ KẾT NỐI THÀNH CÔNG!**\n\n"
+                            f"✅ Người bạn của bạn (@{sender.username or sender.first_name}) đã tham gia Kênh và hoàn thành điều kiện.\n"
+                            f"✨ Hai tài khoản đã được liên kết thành công! Bây giờ bạn có thể bấm **🎁 Nhận Locket Gold Free** để lấy link mở ứng dụng ngay lập tức!"
+                        )
+                    except Exception:
+                        pass
+
             welcome_text = (
                 f"🎉 **XÁC MINH THÀNH CÔNG!**\n\n"
                 f"Cảm ơn bạn đã tham gia kênh cộng đồng. Mọi chức năng và ưu đãi của bot đã được mở khóa!\n"
@@ -471,19 +533,31 @@ async def callback_handler(event):
             await event.answer()
             return
 
-        # CHƯA ĐỦ ĐIỀU KIỆN: ĐƯA RA NHIỆM VỤ GIỚI THIỆU BẠN BÈ
+        # CHƯA ĐỦ ĐIỀU KIỆN: ĐƯA RA NHIỆM VỤ GIỚI THIỆU BẠN BÈ VỚI 2 PHƯƠNG THỨC
+        ref_code = db.get_user_ref_code(user_id)
+        bot_info = await client.get_me()
+        bot_user = bot_info.username or "locketfreeshop_bot"
+        ref_link = f"https://t.me/{bot_user}?start={ref_code}"
+        cmd_code = f"/{ref_code}"
+
         ref_text = (
             "🎁 **ĐIỀU KIỆN NHẬN LOCKET GOLD FREE (0Đ)**\n\n"
-            "Để tránh spam và nhận link ứng dụng Locket Gold Free, bạn chỉ cần thực hiện nhiệm vụ sau:\n\n"
-            "1️⃣ **Giới thiệu 1 người bạn** (hoặc dùng 1 tài khoản phụ/clone của bạn):\n"
-            "   • Người bạn đó phải bấm vào bot và gửi lệnh `/start`\n"
-            "   • Người bạn đó phải tham gia nhóm cộng đồng của shop.\n\n"
-            "2️⃣ Sau đó bạn bấm nút **'✍️ Nhập Username Người Bạn'** bên dưới để bot quét kiểm tra.\n\n"
-            "💡 **Mẹo nhỏ:** Bạn có thể tự tạo 1 tài khoản Telegram phụ (clone), hoặc nhờ người thân/bạn bè bấm vào bot là xong ngay trong 1 phút!\n"
-            "⚠️ _Mỗi tài khoản bạn bè chỉ được tính hợp lệ cho 1 người giới thiệu duy nhất (hệ thống lưu ID cố định chống gian lận)._"
+            "Để nhận link mở ứng dụng Locket Gold Free, bạn chỉ cần **kết nối với 1 người bạn** (hoặc 1 nick phụ/clone của bạn) qua **1 trong 2 cách sau**:\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🔗 **CÁCH 1: GỬI LINK GIỚI THIỆU TRỰC TIẾP**\n"
+            f"• Link của bạn: `{ref_link}`\n"
+            "👉 Gửi link này cho bạn bè bấm vào. Khi bạn bè bấm **/start** và **tham gia Kênh cộng đồng**, hệ thống sẽ tự động liên kết 2 tài khoản ngay lập tức!\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🔑 **CÁCH 2: SAO CHÉP MÃ LỆNH 8 KÝ TỰ**\n"
+            f"• Mã kết nối của bạn: `{cmd_code}`\n"
+            "👉 Bạn của bạn chỉ cần vào bot, vượt qua bước tham gia Kênh, sau đó **nhắn tin đúng mã trên** vào bot là 2 tài khoản tự động liên kết thành công!\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "💡 **Mẹo:** Bạn có thể tự tạo 1 tài khoản Telegram clone rồi tự gửi link/mã để hoàn thành ngay trong 1 phút!\n"
+            "⚠️ _Lưu ý: Hai tài khoản sau khi liên kết với nhau sẽ được tính hoàn thành và không thể liên kết thêm với ai khác nữa._"
         )
+        share_url = f"https://t.me/share/url?url={ref_link}&text=Bấm%20vào%20đây%20để%20nhận%20Locket%20Gold%20Free%20cùng%20mình%20nhé!"
         buttons = [
-            [Button.inline("✍️ Nhập Username Người Bạn Đã Mời", b"enter_referral_friend")],
+            [Button.url("📲 Bấm Để Chia Sẻ Link Nhanh", share_url)],
             [Button.inline("⬅️ Quay Lại Menu", b"menu_main")]
         ]
         try:
@@ -770,6 +844,106 @@ async def message_input_handler(event):
                     pass
             else:
                 await event.respond(f"⚠️ Không tìm thấy đơn hàng {order_id}!")
+            return
+
+    # XỬ LÝ PHƯƠNG THỨC 2: NHẬP MÃ GIỚI THIỆU 8 KÝ TỰ (dạng /abcsf... hoặc abcsf...)
+    raw_text = (event.raw_text or "").strip()
+    clean_code = raw_text.lstrip("/").strip()
+    if len(clean_code) == 8 and clean_code.isalnum() and not raw_text.startswith("/deliver_"):
+        referrer = db.find_user_by_ref_code(clean_code)
+        if referrer:
+            user_id = event.sender_id
+            sender = await event.get_sender()
+            sender_name = (sender.username if sender and sender.username else (sender.first_name if sender else "Bạn")) or "Bạn"
+
+            # 1. Không được tự nhập mã của chính mình
+            if referrer["id"] == user_id:
+                await event.respond(
+                    "❌ **Không thể tự kết nối:** Đây là mã kết nối của chính bạn!\n"
+                    "👉 Hãy gửi mã này cho một người bạn khác (hoặc tài khoản clone) để hoàn thành nhé."
+                )
+                return
+
+            # 2. Kiểm tra xem người gửi mã đã tham gia kênh cộng đồng chưa
+            is_member = await check_user_in_group(user_id)
+            if not is_member:
+                prompt_text, buttons = get_join_group_prompt(user_id)
+                await event.respond(
+                    "⚠️ **BẠN CẦN THAM GIA KÊNH CỘNG ĐỒNG TRƯỚC!**\n\n"
+                    "Để nhập mã kết nối bạn bè, bạn vui lòng tham gia kênh cộng đồng của shop trước nhé:\n\n" + prompt_text,
+                    buttons=buttons
+                )
+                return
+
+            # 3. Kiểm tra xem tài khoản này hoặc tài khoản bạn bè đã liên kết với ai trước đó chưa
+            if db.is_user_already_linked(user_id):
+                user_data = db.get_or_create_user(user_id)
+                await event.respond(
+                    "⚠️ **Tài khoản của bạn đã được liên kết giới thiệu trước đó rồi!**\n\n"
+                    "Mỗi tài khoản chỉ được kết nối với 1 người bạn duy nhất. "
+                    "Bạn đã đủ điều kiện nhận quà, hãy bấm nút bên dưới để mở app nhận Locket Gold Free:",
+                    buttons=[
+                        [Button.url("🚀 MỞ APP NHẬN LOCKET GOLD FREE", "https://t.me/nghientrickshop_bot?startapp")],
+                        [Button.inline("⬅️ Về Menu Chính", b"menu_main")]
+                    ]
+                )
+                return
+
+            if db.is_user_already_linked(referrer["id"]):
+                await event.respond(
+                    "⚠️ **Mã kết nối này đã được một người khác sử dụng trước đó!**\n\n"
+                    "Mỗi mã chỉ có hiệu lực ghép nối 1-1 cho 2 tài khoản duy nhất. "
+                    "Vui lòng xin mã của một người bạn khác hoặc dùng tài khoản clone khác nhé!"
+                )
+                return
+
+            # 4. Thực hiện liên kết 2 chiều
+            linked = db.link_referral_mutual(user_id, referrer["id"])
+            if linked:
+                # Gửi thông báo thành công cho người nhập mã kèm nút mở App
+                success_text_sender = (
+                    "🎉 **KẾT NỐI BẠN BÈ THÀNH CÔNG RỰC RỠ!**\n\n"
+                    f"✅ Hệ thống đã tự động liên kết tài khoản của bạn với người bạn (`Mã: {clean_code}`).\n"
+                    f"✨ Cả 2 bạn đều đã hoàn thành nhiệm vụ và đủ điều kiện nhận **Locket Gold Free 0đ**!\n\n"
+                    f"👇 Bấm nút bên dưới để mở ứng dụng nhận Locket Gold Free ngay lập tức:"
+                )
+                sender_buttons = [
+                    [Button.url("🚀 MỞ APP NHẬN LOCKET GOLD FREE", "https://t.me/nghientrickshop_bot?startapp")],
+                    [Button.inline("⬅️ Về Menu Chính", b"menu_main")]
+                ]
+                await event.respond(success_text_sender, buttons=sender_buttons)
+
+                # Gửi thông báo trực tiếp cho người chủ mã kèm nút mở App
+                try:
+                    ref_text_notify = (
+                        "🎉 **BẠN BÈ ĐÃ KẾT NỐI THÀNH CÔNG!**\n\n"
+                        f"✅ Người bạn của bạn (@{sender_name}) vừa nhập mã kết nối của bạn và hoàn thành điều kiện.\n"
+                        f"✨ Cả hai tài khoản đã được liên kết thành công! Bây giờ bạn có thể bấm nút bên dưới để mở ứng dụng nhận Locket Gold Free ngay lập tức:"
+                    )
+                    ref_buttons = [
+                        [Button.url("🚀 MỞ APP NHẬN LOCKET GOLD FREE", "https://t.me/nghientrickshop_bot?startapp")],
+                        [Button.inline("⬅️ Về Menu Chính", b"menu_main")]
+                    ]
+                    await client.send_message(referrer["id"], ref_text_notify, buttons=ref_buttons)
+                except Exception as e:
+                    logger.warning(f"Không thể gửi tin nhắn thông báo kết nối tới {referrer['id']}: {e}")
+
+                # Báo cho Admin biết
+                for aid in ADMIN_IDS:
+                    try:
+                        await client.send_message(
+                            aid,
+                            f"🎁 **KẾT NỐI GIỚI THIỆU THÀNH CÔNG (MÃ 8 KÝ TỰ):**\n"
+                            f"• Người nhập mã: @{sender_name} (`{user_id}`)\n"
+                            f"• Chủ mã: @{referrer.get('username') or referrer.get('first_name')} (`{referrer['id']}`)\n"
+                            f"• Mã: `{clean_code}`\n"
+                            f"• Thời gian: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                        )
+                    except Exception:
+                        pass
+                return
+
+    if event.raw_text.startswith("/"):
         return
 
     user_id = event.sender_id
