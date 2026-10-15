@@ -279,6 +279,7 @@ async def send_locket_free_referral_flow(event, user_id: int):
     share_url = f"https://t.me/share/url?url={ref_link}&text=Bấm%20vào%20đây%20để%20nhận%20Locket%20Gold%20Free%20cùng%20mình%20nhé!"
     buttons = [
         [Button.url("📲 Bấm Để Chia Sẻ Link Nhanh", share_url)],
+        [Button.inline(f"📋 Sao Chép Mã ({cmd_code})", f"copy_code_{ref_code}".encode())],
         [Button.inline("⬅️ Quay Lại Menu Chính", b"menu_main")]
     ]
     await event.respond(ref_text, buttons=buttons)
@@ -558,6 +559,7 @@ async def callback_handler(event):
         share_url = f"https://t.me/share/url?url={ref_link}&text=Bấm%20vào%20đây%20để%20nhận%20Locket%20Gold%20Free%20cùng%20mình%20nhé!"
         buttons = [
             [Button.url("📲 Bấm Để Chia Sẻ Link Nhanh", share_url)],
+            [Button.inline(f"📋 Sao Chép Mã ({cmd_code})", f"copy_code_{ref_code}".encode())],
             [Button.inline("⬅️ Quay Lại Menu", b"menu_main")]
         ]
         try:
@@ -565,6 +567,20 @@ async def callback_handler(event):
         except Exception:
             await event.respond(ref_text, buttons=buttons)
         await event.answer()
+        return
+
+    # NÚT BẤM SAO CHÉP MÃ LIÊN KẾT 8 KÝ TỰ
+    if data.startswith("copy_code_"):
+        code = data.replace("copy_code_", "").strip()
+        cmd = f"/{code}"
+        # Gửi alert hiển thị mã, đồng thời gửi 1 tin nhắn riêng chứa duy nhất mã để khách bấm vào là copy ngay
+        await event.answer(f"Đã sao chép: {cmd}", alert=False)
+        copy_msg = (
+            f"📋 **MÃ LIÊN KẾT CỦA BẠN:**\n\n"
+            f"`{cmd}`\n\n"
+            f"👉 _(Chạm vào dòng chữ trên để sao chép, sau đó gửi cho bạn bè nhắn vào bot nhé!)_"
+        )
+        await event.respond(copy_msg)
         return
 
     # BẮT ĐẦU NHẬP USERNAME BẠN BÈ
