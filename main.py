@@ -118,8 +118,8 @@ def get_main_menu_buttons(user_id: int):
             Button.inline("📜 Hướng Dẫn Mua", b"guide")
         ]
     ]
-    # CHỈ DUY NHẤT ADMIN THẬT (ID TRONG CONFIG) MỚI NHÌN THẤY NÚT NÀY
-    if is_admin(user_id):
+    # CHỈ DUY NHẤT ADMIN THẬT (ID TRONG CONFIG) VÀ KHÔNG Ở CHẾ ĐỘ TEST MỚI NHÌN THẤY NÚT NÀY
+    if is_admin(user_id) and user_id not in test_regular_users:
         buttons.append([Button.inline("👑 Quản Trị Viên (Admin Panel)", b"admin_panel")])
     return buttons
 
@@ -413,20 +413,17 @@ async def backup_command_handler(event):
         return
     await perform_backup_to_chat(event.chat_id)
 
-# ==================== LỆNH BÍ MẬT TEST DÀNH CHO ADMIN (/testadmin) ====================
-# Lệnh này không hiển thị đề xuất trong Menu BotFather
-@client.on(events.NewMessage(pattern=r"(?i)^/testadmin(@\w+)?$"))
+# ==================== LỆNH BÍ MẬT TEST DÀNH CHO TẤT CẢ TÀI KHOẢN (/testadmin, /test) ====================
+# Bất kỳ tài khoản nào cũng có thể gọi lệnh này để xóa trắng dữ liệu và test quy trình từ đầu
+@client.on(events.NewMessage(pattern=r"(?i)^/(testadmin|test|testkhach)(@\w+)?$"))
 async def test_admin_handler(event):
     user_id = event.sender_id
-    if not is_admin(user_id):
-        await event.respond(f"⛔ Lệnh này chỉ dành riêng cho Admin! (ID của bạn: `{user_id}` chưa có trong danh sách ADMIN_ID)")
-        return
 
     # 1. Xóa hoàn toàn toàn bộ dữ liệu tài khoản này trong cơ sở dữ liệu
     db.reset_user_completely(user_id)
     user_states.pop(user_id, None)
 
-    # 2. Đưa tài khoản vào danh sách test như khách mới (bỏ qua mọi đặc quyền admin)
+    # 2. Đưa tài khoản vào danh sách test như khách mới (bỏ qua mọi đặc quyền admin nếu có)
     test_regular_users.add(user_id)
 
     # Đảm bảo reset trạng thái xác minh kênh về 0
@@ -440,7 +437,7 @@ async def test_admin_handler(event):
         "🧪 **[CHẾ ĐỘ TEST KHÁCH MỚI ĐÃ BẬT]**\n\n"
         f"• Đã xóa sạch dữ liệu tài khoản (`{user_id}`) trong database.\n"
         f"• Bạn đang trải nghiệm giao diện như một khách hàng mới lần đầu vào bot.\n"
-        f"• Gõ `/untest` bất kỳ lúc nào để khôi phục lại quyền Admin.\n\n"
+        f"• Gõ `/untest` bất kỳ lúc nào để thoát chế độ test.\n\n"
         "────────────────────\n\n"
     )
     await event.respond(intro + prompt_text, buttons=buttons)
@@ -448,10 +445,11 @@ async def test_admin_handler(event):
 @client.on(events.NewMessage(pattern=r"(?i)^/(untest|endtest)(@\w+)?$"))
 async def untest_handler(event):
     user_id = event.sender_id
-    if not is_admin(user_id):
-        return
     test_regular_users.discard(user_id)
-    await event.respond("👑 **Đã thoát chế độ test!** Tài khoản của bạn đã được khôi phục đầy đủ đặc quyền Quản trị viên.")
+    if is_admin(user_id):
+        await event.respond("👑 **Đã thoát chế độ test!** Tài khoản của bạn đã được khôi phục đầy đủ đặc quyền Quản trị viên.")
+    else:
+        await event.respond("✅ **Đã thoát chế độ test!** Tài khoản của bạn đã trở về trạng thái bình thường.")
 
 async def start_admin_deliver_flow(event, order_id: str, admin_id: int, is_callback: bool = False):
     """Quy trình bàn giao đơn hàng chuyên biệt cho từng dịch vụ:
