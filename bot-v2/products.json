@@ -3,7 +3,7 @@
     "id": "locket_free",
     "name": "🎁 Locket Gold (Miễn Phí)",
     "price": 0,
-    "badge": "FREE 0Đ",
+    "badge": "FREE 0đ",
     "description": "• Trải nghiệm đầy đủ tính năng Locket Gold 0đ\n• Đăng ảnh & video sắc nét, không giới hạn bạn bè\n• Huy hiệu Gold nổi bật trên trang cá nhân\n• Nhận ngay không cần thanh toán (Mỗi người nhận 1 lần)",
     "input_prompt": "Vui lòng nhập Email hoặc Tên tài khoản (Username) Locket của bạn để nhận:",
     "input_placeholder": "Ví dụ: username_locket hoặc email@gmail.com"
@@ -12,7 +12,7 @@
     "id": "canva_free",
     "name": "🎨 Canva Pro Edu (Miễn Phí)",
     "price": 0,
-    "badge": "FREE 0Đ",
+    "badge": "FREE 0đ",
     "description": "• Nhận ngay link mời vào nhóm gia đình Canva Pro Edu chính chủ 0đ\n• Sử dụng trọn bộ công cụ thiết kế, kho tài nguyên Premium\n• Xóa phông 1 chạm, Magic Resize, không giới hạn tính năng VIP\n• Nhận trực tiếp miễn phí 100% không cần làm nhiệm vụ",
     "input_prompt": "",
     "input_placeholder": ""
