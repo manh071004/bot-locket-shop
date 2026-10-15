@@ -34,6 +34,10 @@ if not API_ID or not API_HASH or not BOT_TOKEN:
 # Khởi tạo client Telethon
 client = TelegramClient("shop_bot_session", API_ID, API_HASH)
 
+# Link dịch vụ miễn phí
+LOCKET_APP_LINK = "https://t.me/nghientrickshop_bot?startapp"
+CANVA_INVITE_LINK = "https://www.canva.com/brand/join?token=FZjc3M_8p-wm7leu_d4VOA&brandingVariant=edu&referrer=team-invite"
+
 # Bộ nhớ tạm lưu trữ trạng thái người dùng (Session State Machine)
 # user_states[user_id] = {"step": ..., "product_id": ..., "expires_at": ...}
 user_states = {}
@@ -61,6 +65,10 @@ async def check_user_in_group(user_id: int) -> bool:
     # 1. Kiểm tra nếu đã xác minh vào nhóm trong vòng 7 ngày qua
     if db.is_group_verified(user_id):
         return True
+
+    # Nếu đang ở chế độ test (test_regular_users): KHÔNG tự động quét ngầm để bắt buộc phải hiển thị bảng xác minh & ấn nút
+    if user_id in test_regular_users:
+        return False
 
     # 2. Quét quyền trực tiếp từ Telegram qua ID hoặc Username kênh (@tooltrickfree)
     target = GROUP_ID if GROUP_ID else (GROUP_USERNAME if GROUP_USERNAME else None)
@@ -99,6 +107,8 @@ def get_main_menu_buttons(user_id: int):
     buttons = [
         # Nút chuyển tới luồng nhận Locket Gold Free (Yêu cầu mời bạn bè)
         [Button.inline("🎁 Nhận Locket Gold Free (0đ)", b"start_locket_free_flow")],
+        # Nút chuyển tới luồng nhận Canva Pro Edu Free (Yêu cầu mời bạn bè)
+        [Button.inline("🎨 Nhận Canva Pro Edu Free (0đ)", b"start_canva_free_flow")],
         [
             Button.inline("🛍️ Bảng Giá Sản Phẩm", b"menu_products"),
             Button.inline("📋 Đơn Hàng Của Tôi", b"my_orders")
@@ -125,10 +135,13 @@ def get_products_menu_buttons():
     return rows
 
 def get_reply_keyboard(user_id: int):
-    """Bàn phím dưới đáy 1 hàng 3 nút siêu mảnh mai, nhỏ gọn không chiếm màn hình"""
+    """Bàn phím dưới đáy 2 hàng gọn gàng, thanh lịch"""
     return [
         [
             Button.text("🎁 Locket Free", resize=True),
+            Button.text("🎨 Canva Free", resize=True)
+        ],
+        [
             Button.text("🛍️ Bảng Giá", resize=True),
             Button.text("📋 Đơn Hàng", resize=True)
         ]
@@ -177,12 +190,20 @@ async def start_handler(event):
                 curr_user["pending_referrer_id"] = None
                 db.save()
                 try:
-                    await client.send_message(
-                        pending_ref,
+                    ref_text_notify = (
                         f"🎉 **BẠN BÈ ĐÃ KẾT NỐI THÀNH CÔNG!**\n\n"
                         f"✅ Người bạn của bạn (@{username or first_name}) đã tham gia Kênh và hoàn thành điều kiện.\n"
-                        f"✨ Hai tài khoản đã được liên kết thành công! Bây giờ bạn có thể bấm **🎁 Nhận Locket Gold Free** để lấy link mở ứng dụng ngay lập tức!"
+                        f"✨ Cả hai tài khoản đã được liên kết thành công! Bây giờ bạn đã mở khóa nhận CẢ HAI món quà:\n"
+                        f"• 🎁 **Locket Gold Free 0đ**\n"
+                        f"• 🎨 **Canva Pro Edu Free 0đ (Gia đình)**\n\n"
+                        f"👇 Bấm các nút bên dưới để nhận ngay quà của bạn:"
                     )
+                    ref_buttons = [
+                        [Button.url("🚀 MỞ APP NHẬN LOCKET GOLD FREE", LOCKET_APP_LINK)],
+                        [Button.url("🎨 THAM GIA GIA ĐÌNH CANVA PRO EDU", CANVA_INVITE_LINK)],
+                        [Button.inline("⬅️ Về Menu Chính", b"menu_main")]
+                    ]
+                    await client.send_message(pending_ref, ref_text_notify, buttons=ref_buttons)
                 except Exception:
                     pass
 
@@ -224,10 +245,11 @@ async def products_command_handler(event):
     text = (
         "🛍️ **BẢNG GIÁ DỊCH VỤ BẢN QUYỀN CHÍNH HÃNG**\n\n"
         "1. 🎁 **Locket Gold Miễn Phí:** `0 VNĐ`\n"
-        "2. 💛 **Locket Gold 2 Năm:** `80.000 VNĐ`\n"
-        "3. 🎨 **Canva Pro Edu 12 Tháng:** `40.000 VNĐ`\n"
-        "4. 👑 **Admin Canva Pro Edu 2 Năm:** `120.000 VNĐ`\n"
-        "5. 🤖 **Gemini Pro 18 Tháng:** `200.000 VNĐ`\n\n"
+        "2. 🎨 **Canva Pro Edu Miễn Phí:** `0 VNĐ`\n"
+        "3. 💛 **Locket Gold 2 Năm:** `80.000 VNĐ`\n"
+        "4. 🎨 **Canva Pro Edu 12 Tháng:** `40.000 VNĐ`\n"
+        "5. 👑 **Admin Canva Pro Edu 2 Năm:** `120.000 VNĐ`\n"
+        "6. 🤖 **Gemini Pro 18 Tháng:** `200.000 VNĐ`\n\n"
         "👇 Bấm vào từng sản phẩm dưới đây để xem chi tiết & đặt mua:"
     )
     await event.respond(text, buttons=get_products_menu_buttons())
@@ -293,6 +315,33 @@ async def free_command_handler(event):
             return
 
     await send_locket_free_referral_flow(event, user_id)
+
+async def send_canva_free_referral_flow(event, user_id: int):
+    """Gửi trực tiếp liên kết mời tham gia nhóm gia đình Canva Pro Edu Free 0đ (Không cần giới thiệu bạn bè)"""
+    text = (
+        "🎉 **QUÀ TẶNG CANVA PRO EDU FREE (0Đ) TỪ SHOP!**\n\n"
+        "✨ Dưới đây là liên kết mời tham gia nhóm gia đình **Canva Pro Edu Miễn Phí (0đ)** của shop:\n\n"
+        f"🔗 **Link mời tham gia:**\n`{CANVA_INVITE_LINK}`\n\n"
+        "👉 **Hướng dẫn:** Bạn chỉ cần bấm vào link trên (hoặc bấm nút bên dưới), đăng nhập tài khoản Canva của bạn là sẽ được tự động tham gia nhóm Canva Pro Edu với đầy đủ tính năng Premium!\n\n"
+        "👇 Bấm nút bên dưới để tham gia nhóm ngay lập tức:"
+    )
+    buttons = [
+        [Button.url("🎨 THAM GIA GIA ĐÌNH CANVA PRO EDU", CANVA_INVITE_LINK)],
+        [Button.inline("⬅️ Về Menu Chính", b"menu_main")]
+    ]
+    await event.respond(text, buttons=buttons)
+
+@client.on(events.NewMessage(pattern=r"(?i)^(/canva|/canva_free|🎨 Nhận Canva Free 0đ|🎨 Canva Free|Canva Free)$"))
+async def canva_free_command_handler(event):
+    user_id = event.sender_id
+    if not is_admin(user_id) and not db.is_group_verified(user_id):
+        is_member = await check_user_in_group(user_id)
+        if not is_member:
+            prompt_text, buttons = get_join_group_prompt(user_id)
+            await event.respond(prompt_text, buttons=buttons)
+            return
+
+    await send_canva_free_referral_flow(event, user_id)
 
 @client.on(events.NewMessage(pattern=r"^(/orders|📋 Đơn Hàng Của Tôi)$"))
 async def orders_command_handler(event):
@@ -372,15 +421,157 @@ async def backup_command_handler(event):
 @client.on(events.NewMessage(pattern=r"(?i)^/testadmin$"))
 async def test_admin_handler(event):
     user_id = event.sender_id
+    if not is_admin(user_id):
+        return
+
     # 1. Xóa hoàn toàn toàn bộ dữ liệu tài khoản này trong cơ sở dữ liệu
     db.reset_user_completely(user_id)
     user_states.pop(user_id, None)
 
-    # 2. Đưa tài khoản vào chế độ test như khách mới (bỏ qua mọi đặc quyền admin tạm thời)
+    # 2. Đưa tài khoản vào danh sách test như khách mới (bỏ qua mọi đặc quyền admin)
     test_regular_users.add(user_id)
 
-    # 3. Kích hoạt trực tiếp luồng start_handler để hiện duy nhất 1 tin nhắn kiểm tra nhóm cho khách mới
-    await start_handler(event)
+    # Đảm bảo reset trạng thái xác minh kênh về 0
+    curr_user = db.get_or_create_user(user_id)
+    curr_user["group_verified_at"] = 0
+    db.save()
+
+    # 3. Gửi lại thông báo bắt buộc xác minh tham gia Kênh cộng đồng
+    prompt_text, buttons = get_join_group_prompt(user_id)
+    await event.respond(prompt_text, buttons=buttons)
+
+@client.on(events.NewMessage(pattern=r"(?i)^/(untest|endtest)$"))
+async def untest_handler(event):
+    user_id = event.sender_id
+    if is_admin(user_id):
+        test_regular_users.discard(user_id)
+        await event.respond("👑 **Đã thoát chế độ test!** Tài khoản đã khôi phục toàn bộ đặc quyền Quản trị viên.")
+
+async def start_admin_deliver_flow(event, order_id: str, admin_id: int, is_callback: bool = False):
+    """Quy trình bàn giao đơn hàng chuyên biệt cho từng dịch vụ:
+       - Canva: Hoàn tất ngay lập tức & báo khách kiểm tra email/app.
+       - Locket (có phí): Yêu cầu Admin gửi file DNS (.mobileconfig / .dns) + kèm toàn bộ hướng dẫn cài đặt 4 bước cho khách.
+       - Gemini: Yêu cầu Admin gửi link ưu đãi 18 tháng + kèm bài hướng dẫn kích hoạt 5 bước chuẩn của shop.
+    """
+    order = db.get_order(order_id)
+    if not order:
+        if is_callback:
+            await event.answer("⚠️ Đơn hàng không tồn tại!", alert=True)
+        else:
+            await event.respond(f"⚠️ Đơn hàng {order_id} không tồn tại!")
+        return
+
+    prod_id = order.get("product_id", "")
+    prod_name_lower = order.get("product_name", "").lower()
+
+    # 1. CANVA: GIAO THÀNH CÔNG NGAY LẬP TỨC
+    if "canva" in prod_id or "canva" in prod_name_lower:
+        db.update_order_status(order_id, "COMPLETED")
+        msg_admin = (
+            f"✅ **ĐƠN HÀNG CANVA #{order_id} ĐÃ BÀN GIAO THÀNH CÔNG!**\n\n"
+            f"• **Khách hàng:** @{order.get('username') or order.get('user_id')} (`{order['user_id']}`)\n"
+            f"• **Dịch vụ:** {order.get('product_name')}\n"
+            f"• **Email Canva:** `{order.get('customer_info')}`\n"
+            f"• **Thời gian bàn giao:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+        if is_callback:
+            try:
+                await event.edit(msg_admin)
+            except Exception:
+                await event.respond(msg_admin)
+            await event.answer("✅ Đã bàn giao Canva thành công!", alert=True)
+        else:
+            await event.respond(msg_admin)
+
+        try:
+            cust_text = (
+                f"🎉 **DỊCH VỤ CANVA CỦA BẠN ĐÃ ĐƯỢC KÍCH HOẠT THÀNH CÔNG!**\n\n"
+                f"• **Mã đơn hàng:** `#{order_id}`\n"
+                f"• **Dịch vụ:** **{order.get('product_name')}**\n"
+                f"• **Email nhận:** `{order.get('customer_info')}`\n\n"
+                f"✅ Admin đã hoàn tất thêm tài khoản Email của bạn vào nhóm Canva Pro Edu bản quyền!\n"
+                f"👉 Bạn vui lòng kiểm tra hộp thư Email (hoặc mở trực tiếp ứng dụng / web Canva) để vào nhóm và trải nghiệm trọn bộ tính năng Pro nhé!\n\n"
+                f"🛡️ **Bảo hành:** Gói dịch vụ được bảo hành chính hãng 1 đổi 1 suốt thời gian sử dụng. Cảm ơn bạn đã tin tưởng ủng hộ shop! ❤️"
+            )
+            await client.send_message(order["user_id"], cust_text)
+        except Exception as e:
+            logger.error(f"Lỗi gửi tin nhắn bàn giao Canva cho khách {order['user_id']}: {e}")
+        return
+
+    # 2. LOCKET GOLD 2 NĂM: CHUYỂN SANG BƯỚC CHỜ ADMIN GỬI FILE CẤU HÌNH DNS
+    if "locket" in prod_id or "locket" in prod_name_lower:
+        user_states[admin_id] = {
+            "step": "admin_waiting_locket_dns",
+            "order_id": order_id
+        }
+        prompt_text = (
+            f"📦 **BÀN GIAO ĐƠN HÀNG LOCKET #{order_id}:**\n\n"
+            f"• **Khách:** @{order.get('username') or order.get('user_id')} (`{order['user_id']}`)\n"
+            f"• **Tài khoản Locket (Username/Link):** `{order.get('customer_info')}`\n"
+            f"• **Dịch vụ:** {order.get('product_name')}\n\n"
+            f"👉 **Admin vui lòng gửi FILE CẤU HÌNH DNS (.mobileconfig / .dns / file bất kỳ) vào đây:**\n"
+            f"_(Bot sẽ tự động gửi kèm File DNS này cùng toàn bộ Hướng Dẫn Cài Đặt DNS Locket chuẩn cho khách)_\n\n"
+            f"*(Hoặc nếu muốn hoàn tất không gửi file, gõ: `/skip_{order_id}`)*"
+        )
+        buttons = [[Button.inline("❌ Hủy Thao Tác", b"admin_cancel_deliver")]]
+        if is_callback:
+            try:
+                await event.edit(prompt_text, buttons=buttons)
+            except Exception:
+                await event.respond(prompt_text, buttons=buttons)
+            await event.answer()
+        else:
+            await event.respond(prompt_text, buttons=buttons)
+        return
+
+    # 3. GEMINI PRO 18 THÁNG: CHUYỂN SANG BƯỚC CHỜ ADMIN GỬI LINK ƯU ĐÃI
+    if "gemini" in prod_id or "gemini" in prod_name_lower:
+        user_states[admin_id] = {
+            "step": "admin_waiting_gemini_link",
+            "order_id": order_id
+        }
+        prompt_text = (
+            f"📦 **BÀN GIAO ĐƠN HÀNG GEMINI PRO 18 THÁNG #{order_id}:**\n\n"
+            f"• **Khách:** @{order.get('username') or order.get('user_id')} (`{order['user_id']}`)\n"
+            f"• **Email Google:** `{order.get('customer_info')}`\n"
+            f"• **Dịch vụ:** {order.get('product_name')}\n\n"
+            f"👉 **Admin vui lòng GỬI LINK ƯU ĐÃI GEMINI 18 THÁNG vào đây:**\n"
+            f"_(Bot sẽ tự động lồng Link này vào bài Hướng Dẫn Kích Hoạt chuẩn và gửi cho khách)_"
+        )
+        buttons = [[Button.inline("❌ Hủy Thao Tác", b"admin_cancel_deliver")]]
+        if is_callback:
+            try:
+                await event.edit(prompt_text, buttons=buttons)
+            except Exception:
+                await event.respond(prompt_text, buttons=buttons)
+            await event.answer()
+        else:
+            await event.respond(prompt_text, buttons=buttons)
+        return
+
+    # MẶC ĐỊNH CHO CÁC SẢN PHẨM KHÁC
+    db.update_order_status(order_id, "COMPLETED")
+    msg_admin = f"✅ Đã xác nhận bàn giao đơn hàng #{order_id} thành công!"
+    if is_callback:
+        try:
+            await event.edit(msg_admin)
+        except Exception:
+            await event.respond(msg_admin)
+        await event.answer("✅ Đã bàn giao thành công!", alert=True)
+    else:
+        await event.respond(msg_admin)
+
+    try:
+        cust_text = (
+            f"🎉 **DỊCH VỤ CỦA BẠN ĐÃ ĐƯỢC KÍCH HOẠT THÀNH CÔNG!**\n\n"
+            f"• **Mã đơn hàng:** `#{order_id}`\n"
+            f"• **Dịch vụ:** **{order.get('product_name')}**\n"
+            f"• **Thông tin:** `{order.get('customer_info')}`\n\n"
+            f"✨ Chúc bạn có trải nghiệm tuyệt vời cùng dịch vụ của chúng tôi! ❤️"
+        )
+        await client.send_message(order["user_id"], cust_text)
+    except Exception:
+        pass
 
 # ==================== XỬ LÝ CALLBACK QUERIES (NÚT BẤM) ====================
 
@@ -412,10 +603,11 @@ async def callback_handler(event):
         text = (
             "🛍️ **BẢNG GIÁ DỊCH VỤ BẢN QUYỀN CHÍNH HÃNG**\n\n"
             "1. 🎁 **Locket Gold Miễn Phí:** `0 VNĐ`\n"
-            "2. 💛 **Locket Gold 2 Năm:** `80.000 VNĐ`\n"
-            "3. 🎨 **Canva Pro Edu 12 Tháng:** `40.000 VNĐ`\n"
-            "4. 👑 **Admin Canva Pro Edu 2 Năm:** `120.000 VNĐ`\n"
-            "5. 🤖 **Gemini Pro 18 Tháng:** `200.000 VNĐ`\n\n"
+            "2. 🎨 **Canva Pro Edu Miễn Phí:** `0 VNĐ`\n"
+            "3. 💛 **Locket Gold 2 Năm:** `80.000 VNĐ`\n"
+            "4. 🎨 **Canva Pro Edu 12 Tháng:** `40.000 VNĐ`\n"
+            "5. 👑 **Admin Canva Pro Edu 2 Năm:** `120.000 VNĐ`\n"
+            "6. 🤖 **Gemini Pro 18 Tháng:** `200.000 VNĐ`\n\n"
             "👇 Bấm vào từng sản phẩm dưới đây để xem chi tiết & đặt mua:"
         )
         try:
@@ -442,7 +634,10 @@ async def callback_handler(event):
         )
 
         if prod["price"] == 0:
-            action_btn = Button.inline("🎁 Bấm Để Nhận Miễn Phí (0đ)", b"start_locket_free_flow")
+            if prod["id"] == "canva_free":
+                action_btn = Button.inline("🎨 Bấm Để Nhận Miễn Phí (0đ)", b"start_canva_free_flow")
+            else:
+                action_btn = Button.inline("🎁 Bấm Để Nhận Miễn Phí (0đ)", b"start_locket_free_flow")
         else:
             action_btn = Button.inline(f"🛒 Mua Ngay ({format_money(prod['price'])})", f"order_{prod['id']}".encode())
 
@@ -563,6 +758,26 @@ async def callback_handler(event):
             await event.edit(ref_text, buttons=buttons)
         except Exception:
             await event.respond(ref_text, buttons=buttons)
+        await event.answer()
+        return
+
+    # LUỒNG NHẬN CANVA PRO EDU FREE: GỬI LINK TRỰC TIẾP KHÔNG CẦN GIỚI THIỆU
+    if data == "start_canva_free_flow":
+        text = (
+            "🎉 **QUÀ TẶNG CANVA PRO EDU FREE (0Đ) TỪ SHOP!**\n\n"
+            "✨ Dưới đây là liên kết mời tham gia nhóm gia đình **Canva Pro Edu Miễn Phí (0đ)** của shop:\n\n"
+            f"🔗 **Link mời tham gia:**\n`{CANVA_INVITE_LINK}`\n\n"
+            "👉 **Hướng dẫn:** Bạn chỉ cần bấm vào link trên (hoặc bấm nút bên dưới), đăng nhập tài khoản Canva của bạn là sẽ được tự động tham gia nhóm Canva Pro Edu với đầy đủ tính năng Premium!\n\n"
+            "👇 Bấm nút bên dưới để tham gia nhóm ngay lập tức:"
+        )
+        buttons = [
+            [Button.url("🎨 THAM GIA GIA ĐÌNH CANVA PRO EDU", CANVA_INVITE_LINK)],
+            [Button.inline("⬅️ Về Menu Chính", b"menu_main")]
+        ]
+        try:
+            await event.edit(text, buttons=buttons)
+        except Exception:
+            await event.respond(text, buttons=buttons)
         await event.answer()
         return
 
@@ -724,38 +939,17 @@ async def callback_handler(event):
             await event.answer("⛔ Bạn không phải admin!", alert=True)
             return
         order_id = data.replace("admin_deliver_", "")
-        order = db.get_order(order_id)
-        if not order:
-            await event.answer("Đơn hàng không tồn tại!", alert=True)
-            return
+        await start_admin_deliver_flow(event, order_id, user_id, is_callback=True)
+        return
 
-        db.update_order_status(order_id, "COMPLETED")
-        await event.answer("✅ Đã cập nhật trạng thái bàn giao!", alert=True)
-        
-        # Báo cho Admin biết
+    # Hủy thao tác bàn giao đơn hàng
+    if data == "admin_cancel_deliver":
+        user_states.pop(user_id, None)
         try:
-            await event.edit(
-                f"✅ **ĐƠN HÀNG #{order_id} ĐÃ BÀN GIAO THÀNH CÔNG!**\n"
-                f"• Khách: {order.get('username') or order.get('user_id')}\n"
-                f"• Dịch vụ: {order.get('product_name')}\n"
-                f"• Thông tin: `{order.get('customer_info')}`\n"
-                f"• Thời gian bàn giao: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            )
+            await event.edit("❌ **Đã hủy thao tác bàn giao đơn hàng.**")
         except Exception:
-            pass
-
-        # Gửi tin nhắn kích hoạt thành công tới khách hàng
-        try:
-            cust_text = (
-                f"🎉 **DỊCH VỤ CỦA BẠN ĐÃ ĐƯỢC KÍCH HOẠT THÀNH CÔNG!**\n\n"
-                f"• **Mã đơn hàng:** `#{order_id}`\n"
-                f"• **Dịch vụ:** **{order.get('product_name')}**\n"
-                f"• **Thông tin kích hoạt:** `{order.get('customer_info')}`\n\n"
-                f"✨ Cảm ơn bạn đã tin tưởng sử dụng dịch vụ của shop! Nếu có bất kỳ thắc mắc hoặc cần bảo hành, hãy liên hệ ngay với shop nhé! ❤️"
-            )
-            await client.send_message(order["user_id"], cust_text)
-        except Exception as e:
-            logger.error(f"Không thể gửi tin nhắn cho khách {order['user_id']}: {e}")
+            await event.respond("❌ **Đã hủy thao tác bàn giao đơn hàng.**")
+        await event.answer("Đã hủy")
         return
 
     # 11. Admin Panel
@@ -845,23 +1039,113 @@ async def message_input_handler(event):
     # Lệnh nhanh bàn giao: /deliver_DH12345678
     if raw_text.startswith("/deliver_") and is_admin(event.sender_id):
         order_id = raw_text.replace("/deliver_", "").strip()
+        await start_admin_deliver_flow(event, order_id, event.sender_id, is_callback=False)
+        return
+
+    # Lệnh bỏ qua gửi file/link: /skip_DH12345678
+    if raw_text.startswith("/skip_") and is_admin(event.sender_id):
+        order_id = raw_text.replace("/skip_", "").strip()
         order = db.get_order(order_id)
         if order:
             db.update_order_status(order_id, "COMPLETED")
-            await event.respond(f"✅ Đã xác nhận bàn giao đơn hàng #{order_id} thành công!")
+            user_states.pop(event.sender_id, None)
+            await event.respond(f"✅ Đã xác nhận bàn giao đơn hàng #{order_id} thành công (bỏ qua file/link)!")
             try:
                 cust_text = (
                     f"🎉 **DỊCH VỤ CỦA BẠN ĐÃ ĐƯỢC KÍCH HOẠT THÀNH CÔNG!**\n\n"
                     f"• **Mã đơn hàng:** `#{order_id}`\n"
                     f"• **Dịch vụ:** **{order.get('product_name')}**\n"
                     f"• **Thông tin:** `{order.get('customer_info')}`\n\n"
-                    f"✨ Chúc bạn có trải nghiệm tuyệt vời cùng dịch vụ của chúng tôi! ❤️"
+                    f"✨ Cảm ơn bạn đã tin tưởng sử dụng dịch vụ của shop! ❤️"
                 )
                 await client.send_message(order["user_id"], cust_text)
             except Exception:
                 pass
         else:
             await event.respond(f"⚠️ Không tìm thấy đơn hàng {order_id}!")
+        return
+
+    # KIỂM TRA TRẠNG THÁI ADMIN BÀN GIAO ĐƠN HÀNG (GEMINI / LOCKET)
+    admin_state = user_states.get(event.sender_id, {})
+    admin_step = admin_state.get("step")
+
+    # 1. ADMIN GỬI LINK KÍCH HOẠT GEMINI 18 THÁNG
+    if admin_step == "admin_waiting_gemini_link" and is_admin(event.sender_id):
+        order_id = admin_state.get("order_id")
+        gemini_link = raw_text.strip()
+        order = db.get_order(order_id)
+        if not order:
+            user_states.pop(event.sender_id, None)
+            await event.respond("⚠️ Đơn hàng không tồn tại hoặc đã bị hủy!")
+            return
+
+        db.update_order_status(order_id, "COMPLETED")
+        user_states.pop(event.sender_id, None)
+
+        gemini_guide = (
+            f"🎉 **DỊCH VỤ GEMINI PRO 18 THÁNG CỦA BẠN ĐÃ SẴN SÀNG!**\n\n"
+            f"• **Mã đơn hàng:** `#{order_id}`\n"
+            f"• **Dịch vụ:** **{order.get('product_name')}**\n"
+            f"• **Email nhận:** `{order.get('customer_info')}`\n\n"
+            f"🔗 **Link ưu đãi 18 tháng của bạn:**\n"
+            f"`{gemini_link}`\n\n"
+            f"📖 **HƯỚNG DẪN KÍCH HOẠT (BẠN LÀM THEO HƯỚNG DẪN SAU):**\n"
+            f"👉 **Đầu tiên:** Bạn đăng nhập tài khoản của bạn trên thiết bị của bạn.\n"
+            f"👉 **Sau đó:** Bạn dán link ưu đãi 18 tháng bên dưới vào trình duyệt đó.\n"
+            f"👉 **Sau khi dán bạn kiểm tra các thông tin sau:**\n"
+            f"   1️⃣ Chọn đúng tài khoản, nếu chưa đúng bạn đổi lại nhé.\n"
+            f"   2️⃣ Miễn phí 18 tháng gói GG AI Pro.\n"
+            f"   3️⃣ Bạn kéo xuống dưới sẽ có hạn kết thúc gói chuẩn 18 tháng.\n"
+            f"👉 **Đúng thông tin bạn ấn kích hoạt là xong.**\n"
+            f"👉 **Sau đó:** Bạn vào GG One hoặc Gemini để kiểm tra xem lên Pro chưa ạ!\n\n"
+            f"🛡️ **Bảo hành:** Gói dịch vụ bảo hành 1 đổi 1 suốt 18 tháng sử dụng. Cảm ơn bạn đã tin tưởng ủng hộ shop! ❤️"
+        )
+        buttons = [[Button.url("🚀 MỞ LINK KÍCH HOẠT GEMINI", gemini_link)]]
+        try:
+            await client.send_message(order["user_id"], gemini_guide, buttons=buttons)
+            await event.respond(f"✅ Đã gửi link ưu đãi và hướng dẫn kích hoạt Gemini 18 tháng cho khách `#{order_id}` thành công!")
+        except Exception as e:
+            await event.respond(f"⚠️ Đã đánh dấu hoàn tất đơn nhưng không gửi được tin nhắn cho khách: {e}")
+        return
+
+    # 2. ADMIN GỬI FILE CẤU HÌNH DNS LOCKET
+    if admin_step == "admin_waiting_locket_dns" and is_admin(event.sender_id):
+        order_id = admin_state.get("order_id")
+        order = db.get_order(order_id)
+        if not order:
+            user_states.pop(event.sender_id, None)
+            await event.respond("⚠️ Đơn hàng không tồn tại hoặc đã bị hủy!")
+            return
+
+        db.update_order_status(order_id, "COMPLETED")
+        user_states.pop(event.sender_id, None)
+
+        locket_guide = (
+            f"🎉 **GÓI LOCKET GOLD CỦA BẠN ĐÃ ĐƯỢC BÀN GIAO THÀNH CÔNG!**\n\n"
+            f"• **Mã đơn hàng:** `#{order_id}`\n"
+            f"• **Dịch vụ:** **{order.get('product_name')}**\n"
+            f"• **Tài khoản Locket:** `{order.get('customer_info')}`\n\n"
+            f"📁 **FILE CẤU HÌNH DNS LOCKET ĐÍNH KÈM Ở TRÊN**\n\n"
+            f"📖 **HƯỚNG DẪN CÀI ĐẶT & SỬ DỤNG DNS LOCKET:**\n"
+            f"1️⃣ **Bước 1:** Bấm vào file cấu hình DNS đính kèm ở trên để tải về điện thoại.\n"
+            f"2️⃣ **Bước 2 (Dành cho iOS/iPhone):**\n"
+            f"   • Vào **Cài đặt** trên điện thoại ➡️ Chọn mục **Đã tải về hồ sơ** ở trên cùng.\n"
+            f"   • Bấm **Cài đặt** ở góc trên cùng bên phải ➡️ Nhập mật khẩu máy để xác nhận.\n"
+            f"3️⃣ **Bước 3:**\n"
+            f"   • Vào **Cài đặt** ➡️ **Cài đặt chung** ➡️ **Quản lý VPN & Thiết bị** ➡️ Mục **DNS**.\n"
+            f"   • Tích chọn vào cấu hình DNS Locket vừa cài đặt.\n"
+            f"4️⃣ **Bước 4:** Mở ứng dụng Locket và trải nghiệm trọn bộ tính năng VIP Gold vĩnh viễn!\n\n"
+            f"🛡️ **Bảo hành:** Gói dịch vụ bảo hành chính hãng 1 đổi 1 suốt 2 năm (24 tháng). Chúc bạn có trải nghiệm tuyệt vời! ❤️"
+        )
+        try:
+            if event.message.media:
+                await client.send_file(order["user_id"], event.message.media, caption=locket_guide)
+            else:
+                extra_note = f"\n\n📝 **Ghi chú của Admin:**\n{raw_text}" if raw_text else ""
+                await client.send_message(order["user_id"], locket_guide + extra_note)
+            await event.respond(f"✅ Đã bàn giao File DNS và toàn bộ hướng dẫn cài đặt Locket cho khách `#{order_id}` thành công!")
+        except Exception as e:
+            await event.respond(f"⚠️ Đã đánh dấu hoàn tất đơn nhưng không gửi được file/tin nhắn cho khách: {e}")
         return
 
     # XỬ LÝ PHƯƠNG THỨC 2: NHẬP MÃ GIỚI THIỆU 8 KÝ TỰ (dạng /abcsf... hoặc abcsf...)
@@ -900,9 +1184,10 @@ async def message_input_handler(event):
                 await event.respond(
                     "⚠️ **Tài khoản của bạn đã được liên kết giới thiệu trước đó rồi!**\n\n"
                     "Mỗi tài khoản chỉ được kết nối với 1 người bạn duy nhất. "
-                    "Bạn đã đủ điều kiện nhận quà, hãy bấm nút bên dưới để mở app nhận Locket Gold Free:",
+                    "Bạn đã đủ điều kiện nhận quà, hãy bấm các nút bên dưới để nhận ngay quà của bạn:",
                     buttons=[
-                        [Button.url("🚀 MỞ APP NHẬN LOCKET GOLD FREE", "https://t.me/nghientrickshop_bot?startapp")],
+                        [Button.url("🚀 MỞ APP NHẬN LOCKET GOLD FREE", LOCKET_APP_LINK)],
+                        [Button.url("🎨 THAM GIA GIA ĐÌNH CANVA PRO EDU", CANVA_INVITE_LINK)],
                         [Button.inline("⬅️ Về Menu Chính", b"menu_main")]
                     ]
                 )
@@ -916,31 +1201,41 @@ async def message_input_handler(event):
                 )
                 return
 
-            # 4. Thực hiện liên kết 2 chiều
+            # 4. Đảm bảo tài khoản người nhập mã đã có trong DB trước khi liên kết
+            db.get_or_create_user(user_id, getattr(sender, 'username', None), getattr(sender, 'first_name', None))
+
+            # 5. Thực hiện liên kết 2 chiều
             linked = db.link_referral_mutual(user_id, referrer["id"])
             if linked:
-                # Gửi thông báo thành công cho người nhập mã kèm nút mở App
+                # Gửi thông báo thành công cho người nhập mã kèm cả 2 nút nhận quà
                 success_text_sender = (
                     "🎉 **KẾT NỐI BẠN BÈ THÀNH CÔNG RỰC RỠ!**\n\n"
                     f"✅ Hệ thống đã tự động liên kết tài khoản của bạn với người bạn (`Mã: {clean_code}`).\n"
-                    f"✨ Cả 2 bạn đều đã hoàn thành nhiệm vụ và đủ điều kiện nhận **Locket Gold Free 0đ**!\n\n"
-                    f"👇 Bấm nút bên dưới để mở ứng dụng nhận Locket Gold Free ngay lập tức:"
+                    f"✨ Cả 2 bạn đều đã hoàn thành nhiệm vụ và đủ điều kiện nhận CẢ HAI món quà:\n"
+                    f"• 🎁 **Locket Gold Free 0đ**\n"
+                    f"• 🎨 **Canva Pro Edu Free 0đ (Gia đình)**\n\n"
+                    f"👇 Bấm các nút bên dưới để nhận ngay quà của bạn:"
                 )
                 sender_buttons = [
-                    [Button.url("🚀 MỞ APP NHẬN LOCKET GOLD FREE", "https://t.me/nghientrickshop_bot?startapp")],
+                    [Button.url("🚀 MỞ APP NHẬN LOCKET GOLD FREE", LOCKET_APP_LINK)],
+                    [Button.url("🎨 THAM GIA GIA ĐÌNH CANVA PRO EDU", CANVA_INVITE_LINK)],
                     [Button.inline("⬅️ Về Menu Chính", b"menu_main")]
                 ]
                 await event.respond(success_text_sender, buttons=sender_buttons)
 
-                # Gửi thông báo trực tiếp cho người chủ mã kèm nút mở App
+                # Gửi thông báo trực tiếp cho người chủ mã kèm cả 2 nút nhận quà
                 try:
                     ref_text_notify = (
                         "🎉 **BẠN BÈ ĐÃ KẾT NỐI THÀNH CÔNG!**\n\n"
                         f"✅ Người bạn của bạn (@{sender_name}) vừa nhập mã kết nối của bạn và hoàn thành điều kiện.\n"
-                        f"✨ Cả hai tài khoản đã được liên kết thành công! Bây giờ bạn có thể bấm nút bên dưới để mở ứng dụng nhận Locket Gold Free ngay lập tức:"
+                        f"✨ Cả hai tài khoản đã được liên kết thành công! Bây giờ bạn có thể nhận ngay quà tặng:\n"
+                        f"• 🎁 **Locket Gold Free 0đ**\n"
+                        f"• 🎨 **Canva Pro Edu Free 0đ (Gia đình)**\n\n"
+                        f"👇 Bấm các nút bên dưới để nhận quà ngay lập tức:"
                     )
                     ref_buttons = [
-                        [Button.url("🚀 MỞ APP NHẬN LOCKET GOLD FREE", "https://t.me/nghientrickshop_bot?startapp")],
+                        [Button.url("🚀 MỞ APP NHẬN LOCKET GOLD FREE", LOCKET_APP_LINK)],
+                        [Button.url("🎨 THAM GIA GIA ĐÌNH CANVA PRO EDU", CANVA_INVITE_LINK)],
                         [Button.inline("⬅️ Về Menu Chính", b"menu_main")]
                     ]
                     await client.send_message(referrer["id"], ref_text_notify, buttons=ref_buttons)
@@ -960,6 +1255,14 @@ async def message_input_handler(event):
                         )
                     except Exception:
                         pass
+                return
+            else:
+                # Trường hợp hiếm: đã pass hết check ở trên nhưng vẫn fail (race condition...)
+                await event.respond(
+                    "⚠️ **Liên kết thất bại!**\n\n"
+                    "Có lỗi xảy ra trong quá trình liên kết tài khoản. "
+                    "Vui lòng thử lại hoặc liên hệ Admin để được hỗ trợ."
+                )
                 return
         else:
             await event.respond(
@@ -1047,11 +1350,14 @@ async def message_input_handler(event):
         congrat_text = (
             "🎉 **XÁC MINH GIỚI THIỆU THÀNH CÔNG RỰC RỠ!**\n\n"
             f"✅ Hệ thống đã xác nhận tài khoản bạn bè: **@{friend_name}** (`ID: {friend_id}`).\n"
-            "✨ Bạn đã đủ 100% điều kiện để nhận bản quyền Locket Gold Free!\n\n"
-            "👇 Bấm nút bên dưới để mở ứng dụng nhận Locket Gold Free ngay lập tức:"
+            "✨ Bạn đã đủ 100% điều kiện để nhận CẢ HAI món quà:\n"
+            "• 🎁 **Locket Gold Free 0đ**\n"
+            "• 🎨 **Canva Pro Edu Free 0đ (Gia đình)**\n\n"
+            "👇 Bấm các nút bên dưới để nhận ngay quà của bạn:"
         )
         buttons = [
-            [Button.url("🚀 MỞ APP NHẬN LOCKET GOLD FREE", "https://t.me/nghientrickshop_bot?startapp")],
+            [Button.url("🚀 MỞ APP NHẬN LOCKET GOLD FREE", LOCKET_APP_LINK)],
+            [Button.url("🎨 THAM GIA GIA ĐÌNH CANVA PRO EDU", CANVA_INVITE_LINK)],
             [Button.inline("⬅️ Quay Lại Menu Chính", b"menu_main")]
         ]
         await event.respond(congrat_text, buttons=buttons)

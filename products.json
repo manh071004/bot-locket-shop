@@ -9,13 +9,22 @@
     "input_placeholder": "Ví dụ: username_locket hoặc email@gmail.com"
   },
   {
+    "id": "canva_free",
+    "name": "🎨 Canva Pro Edu (Miễn Phí)",
+    "price": 0,
+    "badge": "FREE 0Đ",
+    "description": "• Nhận ngay link mời vào nhóm gia đình Canva Pro Edu chính chủ 0đ\n• Sử dụng trọn bộ công cụ thiết kế, kho tài nguyên Premium\n• Xóa phông 1 chạm, Magic Resize, không giới hạn tính năng VIP\n• Nhận trực tiếp miễn phí 100% không cần làm nhiệm vụ",
+    "input_prompt": "",
+    "input_placeholder": ""
+  },
+  {
     "id": "locket_2y",
     "name": "💛 Locket Gold (2 Năm)",
     "price": 80000,
     "badge": "80.000đ / 2 Năm",
     "description": "• Gói Locket Gold chính chủ thời hạn 2 năm (24 tháng)\n• Mở khóa toàn bộ tính năng VIP cao cấp nhất\n• Tải ảnh/video chất lượng cao, icon ứng dụng tùy chỉnh\n• Bảo hành uy tín 1 đổi 1 suốt 2 năm sử dụng",
-    "input_prompt": "Vui lòng nhập Email hoặc Số điện thoại đăng ký Locket của bạn:",
-    "input_placeholder": "Ví dụ: 0912345678 hoặc locket@gmail.com"
+    "input_prompt": "Vui lòng nhập Username hoặc Link tài khoản Locket của bạn:",
+    "input_placeholder": "Ví dụ: username_locket hoặc https://locket.cam/..."
   },
   {
     "id": "canva_edu_12m",
