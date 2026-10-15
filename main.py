@@ -840,32 +840,34 @@ async def callback_handler(event):
 
 @client.on(events.NewMessage)
 async def message_input_handler(event):
-    if event.raw_text.startswith("/"):
-        # Lệnh nhanh bàn giao: /deliver_DH12345678
-        if event.raw_text.startswith("/deliver_") and is_admin(event.sender_id):
-            order_id = event.raw_text.replace("/deliver_", "").strip()
-            order = db.get_order(order_id)
-            if order:
-                db.update_order_status(order_id, "COMPLETED")
-                await event.respond(f"✅ Đã xác nhận bàn giao đơn hàng #{order_id} thành công!")
-                try:
-                    cust_text = (
-                        f"🎉 **DỊCH VỤ CỦA BẠN ĐÃ ĐƯỢC KÍCH HOẠT THÀNH CÔNG!**\n\n"
-                        f"• **Mã đơn hàng:** `#{order_id}`\n"
-                        f"• **Dịch vụ:** **{order.get('product_name')}**\n"
-                        f"• **Thông tin:** `{order.get('customer_info')}`\n\n"
-                        f"✨ Chúc bạn có trải nghiệm tuyệt vời cùng dịch vụ của chúng tôi! ❤️"
-                    )
-                    await client.send_message(order["user_id"], cust_text)
-                except Exception:
-                    pass
-            else:
-                await event.respond(f"⚠️ Không tìm thấy đơn hàng {order_id}!")
-            return
+    raw_text = (event.raw_text or "").strip()
+
+    # Lệnh nhanh bàn giao: /deliver_DH12345678
+    if raw_text.startswith("/deliver_") and is_admin(event.sender_id):
+        order_id = raw_text.replace("/deliver_", "").strip()
+        order = db.get_order(order_id)
+        if order:
+            db.update_order_status(order_id, "COMPLETED")
+            await event.respond(f"✅ Đã xác nhận bàn giao đơn hàng #{order_id} thành công!")
+            try:
+                cust_text = (
+                    f"🎉 **DỊCH VỤ CỦA BẠN ĐÃ ĐƯỢC KÍCH HOẠT THÀNH CÔNG!**\n\n"
+                    f"• **Mã đơn hàng:** `#{order_id}`\n"
+                    f"• **Dịch vụ:** **{order.get('product_name')}**\n"
+                    f"• **Thông tin:** `{order.get('customer_info')}`\n\n"
+                    f"✨ Chúc bạn có trải nghiệm tuyệt vời cùng dịch vụ của chúng tôi! ❤️"
+                )
+                await client.send_message(order["user_id"], cust_text)
+            except Exception:
+                pass
+        else:
+            await event.respond(f"⚠️ Không tìm thấy đơn hàng {order_id}!")
+        return
 
     # XỬ LÝ PHƯƠNG THỨC 2: NHẬP MÃ GIỚI THIỆU 8 KÝ TỰ (dạng /abcsf... hoặc abcsf...)
     raw_text = (event.raw_text or "").strip()
-    clean_code = raw_text.lstrip("/").strip()
+    # Loại bỏ @bot_username nếu người dùng bấm hoặc gửi dạng /code@bot
+    clean_code = raw_text.split("@")[0].strip().lstrip("/").strip().lower()
     if len(clean_code) == 8 and clean_code.isalnum() and not raw_text.startswith("/deliver_"):
         referrer = db.find_user_by_ref_code(clean_code)
         if referrer:
@@ -959,6 +961,12 @@ async def message_input_handler(event):
                     except Exception:
                         pass
                 return
+        else:
+            await event.respond(
+                f"⚠️ **Không tìm thấy mã kết nối `{clean_code}` trong hệ thống!**\n\n"
+                "👉 Vui lòng kiểm tra lại chính xác 8 ký tự mã được bạn bè gửi nhé."
+            )
+            return
 
     if event.raw_text.startswith("/"):
         return
