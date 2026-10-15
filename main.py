@@ -19,6 +19,7 @@ from config import (
     BACKUP_INTERVAL_HOURS,
     GROUP_ID,
     GROUP_INVITE_LINK,
+    GROUP_USERNAME,
     logger
 )
 import database
@@ -52,7 +53,7 @@ def format_money(amount: int) -> str:
 test_regular_users = set()
 
 async def check_user_in_group(user_id: int) -> bool:
-    """Kiểm tra xem người dùng đã thực sự tham gia nhóm cộng đồng chưa"""
+    """Kiểm tra xem người dùng đã thực sự tham gia kênh/nhóm cộng đồng chưa"""
     # Nếu đang bật chế độ testadmin thì không miễn trừ admin, kiểm tra như khách mới
     if is_admin(user_id) and user_id not in test_regular_users:
         return True
@@ -61,34 +62,34 @@ async def check_user_in_group(user_id: int) -> bool:
     if db.is_group_verified(user_id):
         return True
 
-    # 2. Nếu có GROUP_ID thì quét quyền trực tiếp từ Telegram
-    if GROUP_ID:
+    # 2. Quét quyền trực tiếp từ Telegram qua ID hoặc Username kênh (@tooltrickfree)
+    target = GROUP_ID if GROUP_ID else (GROUP_USERNAME if GROUP_USERNAME else None)
+    if target:
         try:
-            participant = await client.get_permissions(GROUP_ID, user_id)
+            participant = await client.get_permissions(target, user_id)
             if participant and (participant.is_admin or participant.participant):
                 db.set_group_verified(user_id)
                 return True
             return False
         except Exception as e:
-            logger.warning(f"Quét thành viên nhóm Telegram lỗi: {e}")
+            logger.warning(f"Quét thành viên kênh/nhóm Telegram ({target}) lỗi: {e}")
             return False
 
-    # 3. Nếu chưa cấu hình GROUP_ID: Buộc khách phải bấm nút '✅ Tôi Đã Vào Nhóm' thì mới được dùng
     return False
 
 def get_join_group_prompt(user_id: int):
-    """Thông báo bắt buộc tham gia nhóm cộng đồng kèm nút xác minh"""
+    """Thông báo bắt buộc tham gia kênh cộng đồng kèm nút xác minh"""
     text = (
         "📢 **THÔNG BÁO TỪ HỆ THỐNG SHOP BẢN QUYỀN**\n\n"
         "Chào bạn! Để tiếp tục sử dụng bot và nhận các chương trình ưu đãi, giảm giá sốc, "
-        "bạn vui lòng **tham gia nhóm cộng đồng chính thức** của chúng tôi nhé!\n\n"
-        "👉 **Bước 1:** Bấm nút **'👉 Tham Gia Nhóm Ngay'** bên dưới.\n"
-        "👉 **Bước 2:** Bấm nút **'✅ Tôi Đã Vào Nhóm'** để bot quét và mở khóa toàn bộ tính năng.\n\n"
+        "bạn vui lòng **tham gia Kênh cộng đồng chính thức** của chúng tôi nhé!\n\n"
+        "👉 **Bước 1:** Bấm nút **'👉 Tham Gia Kênh Cộng Đồng'** bên dưới.\n"
+        "👉 **Bước 2:** Bấm nút **'✅ Tôi Đã Vào Kênh'** để bot quét và mở khóa toàn bộ tính năng.\n\n"
         "_(Mỗi tuần hệ thống sẽ kiểm tra định kỳ 1 lần để đảm bảo bạn không bỏ lỡ các ưu đãi quà tặng mới nhất)_"
     )
     buttons = [
-        [Button.url("👉 Tham Gia Nhóm Cộng Đồng", GROUP_INVITE_LINK)],
-        [Button.inline("✅ Tôi Đã Vào Nhóm (Xác Minh)", b"verify_joined_group")]
+        [Button.url("👉 Tham Gia Kênh Cộng Đồng", GROUP_INVITE_LINK)],
+        [Button.inline("✅ Tôi Đã Vào Kênh (Xác Minh)", b"verify_joined_group")]
     ]
     return text, buttons
 
@@ -416,24 +417,25 @@ async def callback_handler(event):
 
     # XÁC MINH VÀO NHÓM CỘNG ĐỒNG
     if data == "verify_joined_group":
-        if not GROUP_ID:
-            await event.answer("⚠️ Hệ thống đang đồng bộ nhóm, vui lòng liên hệ Admin cấu hình ID nhóm!", alert=True)
+        target = GROUP_ID if GROUP_ID else (GROUP_USERNAME if GROUP_USERNAME else None)
+        if not target:
+            await event.answer("⚠️ Hệ thống đang cập nhật kênh, vui lòng thử lại sau!", alert=True)
             return
 
         is_member = False
         try:
-            participant = await client.get_permissions(GROUP_ID, user_id)
+            participant = await client.get_permissions(target, user_id)
             is_member = bool(participant and (participant.is_admin or participant.participant))
         except Exception as e:
-            logger.warning(f"Quét nhóm khi bấm nút lỗi: {e}")
+            logger.warning(f"Quét kênh/nhóm khi bấm nút ({target}) lỗi: {e}")
             is_member = False
 
         if is_member:
             db.set_group_verified(user_id)
-            await event.answer("🎉 Tuyệt vời! Bạn đã xác minh vào nhóm thành công.", alert=True)
+            await event.answer("🎉 Tuyệt vời! Bạn đã xác minh vào kênh thành công.", alert=True)
             welcome_text = (
                 f"🎉 **XÁC MINH THÀNH CÔNG!**\n\n"
-                f"Cảm ơn bạn đã tham gia nhóm cộng đồng. Mọi chức năng và ưu đãi của bot đã được mở khóa!\n"
+                f"Cảm ơn bạn đã tham gia kênh cộng đồng. Mọi chức năng và ưu đãi của bot đã được mở khóa!\n"
                 f"👇 _Chọn chức năng bên dưới để tiếp tục:_"
             )
             try:
@@ -441,7 +443,7 @@ async def callback_handler(event):
             except Exception:
                 await event.respond(welcome_text, buttons=get_main_menu_buttons(user_id))
         else:
-            await event.answer("⚠️ Bot kiểm tra bạn VẪN CHƯA vào nhóm! Vui lòng bấm '👉 Tham Gia Nhóm Cộng Đồng' trước rồi thử lại nhé.", alert=True)
+            await event.answer("⚠️ Bot kiểm tra bạn VẪN CHƯA tham gia kênh! Vui lòng bấm '👉 Tham Gia Kênh Cộng Đồng' trước rồi thử lại nhé.", alert=True)
         return
 
     # LUỒNG NHẬN LOCKET GOLD FREE: YÊU CẦU GIỚI THIỆU BẠN BÈ

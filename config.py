@@ -58,10 +58,11 @@ BANK_ID = os.getenv("BANK_ID", "MB").strip()
 BANK_ACCOUNT = os.getenv("BANK_ACCOUNT", "").strip()
 BANK_ACCOUNT_NAME = os.getenv("BANK_ACCOUNT_NAME", "").strip()
 
-# Cấu hình nhóm cộng đồng (Bắt buộc tham gia mới được dùng bot)
+# Cấu hình nhóm / kênh cộng đồng (Bắt buộc tham gia mới được dùng bot)
+GROUP_USERNAME = "tooltrickfree" # Kênh công khai t.me/tooltrickfree
 GROUP_ID_RAW = os.getenv("ADD_GROUP_ID", "").strip()
 GROUP_ID = int(GROUP_ID_RAW) if (GROUP_ID_RAW.startswith("-") and GROUP_ID_RAW[1:].isdigit()) or GROUP_ID_RAW.isdigit() else 0
-GROUP_INVITE_LINK = os.getenv("GROUP_INVITE_LINK", "https://t.me/+ce2GZWmD11MzYzll").strip()
+GROUP_INVITE_LINK = os.getenv("GROUP_INVITE_LINK", "https://t.me/tooltrickfree").strip()
 # Cấu hình thời gian chờ (Timeout)
 TIMEOUT_INPUT_SECONDS = int(os.getenv("TIMEOUT_INPUT_SECONDS", 180)) # 3 phút cho nhập liệu
 TIMEOUT_PAYMENT_SECONDS = int(os.getenv("TIMEOUT_PAYMENT_SECONDS", 600)) # 10 phút cho thanh toán
