@@ -48,6 +48,84 @@ async def get_store_by_slug(slug: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+async def get_store_by_code(code: str) -> Optional[Dict[str, Any]]:
+    """Lấy thông tin cửa hàng theo Mã Định Danh 4 số ngẫu nhiên."""
+    clean_code = (code or "").strip()
+    try:
+        with get_sqlite_conn() as conn:
+            cur = conn.cursor()
+            row = cur.execute(
+                "SELECT * FROM store_configs WHERE store_code = ? AND is_active = 1",
+                (clean_code,)
+            ).fetchone()
+            return dict(row) if row else None
+    except Exception as e:
+        print(f"[!] get_store_by_code error: {e}")
+        return None
+
+
+async def get_customer_lock(telegram_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Kiểm tra xem khách hàng này đã bị gắn chết với cửa hàng nào chưa.
+    Nếu cửa hàng đó bị xóa hoặc bị tắt (is_active = 0), tự động gỡ khóa để khách tự do!
+    """
+    try:
+        with get_sqlite_conn() as conn:
+            cur = conn.cursor()
+            row = cur.execute(
+                """SELECT c.*, s.store_name, s.store_slug, s.store_code, s.is_active
+                   FROM customer_locks c
+                   LEFT JOIN store_configs s ON s.id = c.store_id
+                   WHERE c.telegram_id = ?""",
+                (telegram_id,)
+            ).fetchone()
+
+            if not row:
+                return None
+
+            data = dict(row)
+            # Nếu cửa hàng bị xóa hoặc tắt (is_active != 1) -> Gỡ khóa ngay
+            if not data.get("is_active"):
+                cur.execute("DELETE FROM customer_locks WHERE telegram_id = ?", (telegram_id,))
+                conn.commit()
+                return None
+
+            return data
+    except Exception as e:
+        print(f"[!] get_customer_lock error: {e}")
+        return None
+
+
+async def set_customer_lock(telegram_id: int, store_id: int, store_slug: str):
+    """Gắn chết khách hàng với cửa hàng này mãi mãi (không được đổi cửa hàng)."""
+    try:
+        with get_sqlite_conn() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """INSERT INTO customer_locks (telegram_id, store_id, store_slug, locked_at)
+                   VALUES (?, ?, ?, datetime('now'))
+                   ON CONFLICT(telegram_id) DO UPDATE SET
+                   store_id = excluded.store_id,
+                   store_slug = excluded.store_slug,
+                   locked_at = excluded.locked_at""",
+                (telegram_id, store_id, store_slug)
+            )
+            conn.commit()
+    except Exception as e:
+        print(f"[!] set_customer_lock error: {e}")
+
+
+async def remove_customer_lock(telegram_id: int):
+    """Gỡ khóa khách hàng khi shop bị xóa."""
+    try:
+        with get_sqlite_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM customer_locks WHERE telegram_id = ?", (telegram_id,))
+            conn.commit()
+    except Exception as e:
+        print(f"[!] remove_customer_lock error: {e}")
+
+
 async def get_products_by_store(store_id: int, category_id: Optional[int] = None) -> List[Dict[str, Any]]:
     """Lấy danh sách sản phẩm theo store_id và danh mục (real-time từ web)."""
     try:
