@@ -368,37 +368,34 @@ async def orders_command_handler(event):
     ]
     await event.respond(msg, buttons=buttons)
 
-def get_support_text_and_buttons():
-    """Tạo nội dung hỗ trợ khách hàng, tự động ẩn thông tin admin nếu bật chế độ ẩn danh"""
-    incognito = db.is_admin_incognito()
-    if incognito:
-        text = (
-            "💬 **HỖ TRỢ KHÁCH HÀNG 24/7**\n\n"
-            "Shop luôn sẵn sàng hỗ trợ bạn 24/7!\n\n"
-            "• **Kênh hỗ trợ chính thức:** Vui lòng gửi tin nhắn trực tiếp vào bot hoặc qua nhóm cộng đồng để được Admin phản hồi sớm nhất.\n"
-            "• **Cam kết:** Mọi đơn hàng đều được xử lý và kích hoạt tự động nhanh chóng!\n\n"
-            "_(Bộ phận Chăm Sóc Khách Hàng ẩn danh đang bảo mật thông tin)_"
-        )
-        buttons = [
-            [Button.url("👉 Tham Gia Nhóm Hỗ Trợ", GROUP_INVITE_LINK)],
-            [Button.inline("⬅️ Quay Lại", b"menu_main")]
-        ]
+async def start_customer_support_flow(event, user_id: int, is_callback: bool = False):
+    """Mở giao diện để khách nhắn tin gửi câu hỏi trực tiếp cho Admin qua bot"""
+    user_states[user_id] = {
+        "step": "waiting_customer_support",
+        "expires_at": time.time() + 600
+    }
+    text = (
+        "💬 **TRUNG TÂM HỖ TRỢ KHÁCH HÀNG 24/7**\n\n"
+        "Bạn đang cần tư vấn gói dịch vụ, hỗ trợ thanh toán hoặc bảo hành tài khoản?\n\n"
+        "👉 **Vui lòng nhập câu hỏi hoặc vấn đề của bạn gửi trực tiếp vào đây:**\n"
+        "_(Hệ thống sẽ chuyển tiếp tin nhắn của bạn ngay tới Admin để phản hồi sớm nhất!)_"
+    )
+    buttons = [
+        [Button.inline("❌ Hủy Thao Tác", b"cancel_support")],
+        [Button.inline("⬅️ Về Menu Chính", b"menu_main")]
+    ]
+    if is_callback:
+        try:
+            await event.edit(text, buttons=buttons)
+        except Exception:
+            await event.respond(text, buttons=buttons)
+        await event.answer()
     else:
-        admin_id_str = str(ADMIN_IDS[0]) if ADMIN_IDS else ""
-        text = (
-            "💬 **HỖ TRỢ KHÁCH HÀNG 24/7**\n\n"
-            "Nếu bạn cần tư vấn, gặp sự cố thanh toán hoặc bảo hành dịch vụ, xin vui lòng:\n\n"
-            f"• **Nhắn tin trực tiếp với Admin:** [Liên Hệ Admin](tg://user?id={admin_id_str})\n"
-            f"• **Telegram ID Admin:** `{admin_id_str}`\n\n"
-            "Đội ngũ hỗ trợ sẽ phản hồi bạn trong thời gian sớm nhất!"
-        )
-        buttons = [[Button.inline("⬅️ Quay Lại", b"menu_main")]]
-    return text, buttons
+        await event.respond(text, buttons=buttons)
 
-@client.on(events.NewMessage(pattern=r"^(/support|💬 Hỗ Trợ 24/7|/help)$"))
+@client.on(events.NewMessage(pattern=r"(?i)^(/support(@\w+)?|💬 Hỗ Trợ 24/7|/help(@\w+)?)$"))
 async def support_command_handler(event):
-    text, buttons = get_support_text_and_buttons()
-    await event.respond(text, buttons=buttons)
+    await start_customer_support_flow(event, event.sender_id, is_callback=False)
 
 @client.on(events.NewMessage(pattern=r"(?i)^/admin(@\w+)?$|^👑 Bảng Điều Khiển Admin$"))
 async def admin_command_handler(event):
@@ -898,12 +895,17 @@ async def callback_handler(event):
 
     # 7. Hỗ trợ khách hàng
     if data == "contact_support":
-        text, buttons = get_support_text_and_buttons()
+        await start_customer_support_flow(event, user_id, is_callback=True)
+        return
+
+    # Hủy yêu cầu hỗ trợ
+    if data == "cancel_support":
+        user_states.pop(user_id, None)
         try:
-            await event.edit(text, buttons=buttons)
-        except MessageNotModifiedError:
-            pass
-        await event.answer()
+            await event.edit("❌ **Đã hủy gửi tin nhắn hỗ trợ.**", buttons=[[Button.inline("⬅️ Về Menu Chính", b"menu_main")]])
+        except Exception:
+            await event.respond("❌ **Đã hủy gửi tin nhắn hỗ trợ.**", buttons=[[Button.inline("⬅️ Về Menu Chính", b"menu_main")]])
+        await event.answer("Đã hủy")
         return
 
     # 8. Hướng dẫn mua
@@ -970,15 +972,74 @@ async def callback_handler(event):
         await event.answer()
         return
 
-    # 11.1 Admin Bật/Tắt Chế độ ẩn danh
-    if data == "admin_toggle_incognito":
+    # 11.1 Admin Xem danh sách hỗ trợ khách hàng
+    if data == "admin_support_list":
         if not is_admin(user_id):
             await event.answer("⛔ Không có quyền!", alert=True)
             return
-        new_status = db.toggle_admin_incognito()
-        alert_msg = "🕶️ Đã BẬT chế độ ẩn danh! Toàn bộ thông tin Admin đã được giấu kín." if new_status else "👁️ Đã TẮT chế độ ẩn danh! Thông tin Admin đã hiển thị lại."
-        await event.answer(alert_msg, alert=True)
-        await show_admin_panel(event, is_callback=True)
+        tickets = db.get_pending_support_tickets()
+        if not tickets:
+            await event.edit(
+                "✅ **Hiện tại không có yêu cầu hỗ trợ nào đang chờ xử lý!**\n"
+                "Tất cả câu hỏi của khách hàng đã được phản hồi.",
+                buttons=[[Button.inline("⬅️ Quay Lại Admin", b"admin_panel")]]
+            )
+        else:
+            msg = f"📋 **DANH SÁCH {len(tickets)} KHÁCH HÀNG ĐANG CHỜ HỖ TRỢ:**\n\n"
+            buttons = []
+            for t in tickets[:8]:
+                uname = f"@{t['username']}" if t.get('username') else f"ID: {t['user_id']}"
+                msg += (
+                    f"👤 **{uname}** (`{t['user_id']}`) - #{t['ticket_id']}\n"
+                    f"• Tên: {t.get('first_name', '')}\n"
+                    f"• Thời gian: {t['created_at']}\n"
+                    f"• Câu hỏi: \"{t['message'][:120]}\"\n"
+                    f"────────────────────\n"
+                )
+                buttons.append([Button.inline(f"💬 Trả Lời #{t['ticket_id']} ({uname})", f"admin_reply_ticket_{t['ticket_id']}".encode())])
+            buttons.append([Button.inline("🔄 Làm Mới", b"admin_support_list")])
+            buttons.append([Button.inline("⬅️ Quay Lại Admin", b"admin_panel")])
+            await event.edit(msg, buttons=buttons)
+        await event.answer()
+        return
+
+    # 11.2 Admin Bấm Trả lời ticket hỗ trợ
+    if data.startswith("admin_reply_ticket_"):
+        if not is_admin(user_id):
+            await event.answer("⛔ Bạn không phải admin!", alert=True)
+            return
+        ticket_id = data.replace("admin_reply_ticket_", "").strip()
+        ticket = db.get_support_ticket(ticket_id)
+        if not ticket:
+            await event.answer("⚠️ Yêu cầu hỗ trợ không tồn tại hoặc đã được xử lý!", alert=True)
+            return
+        user_states[user_id] = {
+            "step": "admin_replying_support",
+            "ticket_id": ticket_id
+        }
+        prompt = (
+            f"💬 **TRẢ LỜI YÊU CẦU HỖ TRỢ #{ticket_id}:**\n\n"
+            f"• **Khách hàng:** @{ticket.get('username') or ticket['user_id']} (`{ticket['user_id']}`)\n"
+            f"• **Tên:** {ticket.get('first_name', '')}\n"
+            f"• **Thời gian gửi:** {ticket.get('created_at', '')}\n\n"
+            f"❓ **Nội dung câu hỏi của khách:**\n"
+            f"\"{ticket.get('message')}\"\n\n"
+            f"👉 **Admin vui lòng soạn nội dung phản hồi gửi vào đây:**\n"
+            f"_(Bot sẽ chuyển tiếp tin nhắn trả lời này trực tiếp cho khách hàng)_"
+        )
+        buttons = [[Button.inline("❌ Hủy Trả Lời", b"admin_cancel_reply")]]
+        await event.respond(prompt, buttons=buttons)
+        await event.answer()
+        return
+
+    # 11.3 Admin Hủy trả lời
+    if data == "admin_cancel_reply":
+        user_states.pop(user_id, None)
+        try:
+            await event.edit("❌ **Đã hủy thao tác trả lời khách hàng.**")
+        except Exception:
+            await event.respond("❌ **Đã hủy thao tác trả lời khách hàng.**")
+        await event.answer("Đã hủy")
         return
 
     # 12. Admin Backup Trigger
@@ -1155,6 +1216,81 @@ async def message_input_handler(event):
             await event.respond(f"✅ Đã bàn giao File DNS và toàn bộ hướng dẫn cài đặt Locket cho khách `#{order_id}` thành công!")
         except Exception as e:
             await event.respond(f"⚠️ Đã đánh dấu hoàn tất đơn nhưng không gửi được file/tin nhắn cho khách: {e}")
+        return
+
+    # 3. ADMIN TRẢ LỜI YÊU CẦU HỖ TRỢ CỦA KHÁCH HÀNG
+    if admin_step == "admin_replying_support" and is_admin(event.sender_id):
+        ticket_id = admin_state.get("ticket_id")
+        ticket = db.get_support_ticket(ticket_id)
+        reply_text = raw_text.strip()
+        user_states.pop(event.sender_id, None)
+
+        if not ticket:
+            await event.respond("⚠️ Yêu cầu hỗ trợ không tồn tại hoặc đã được xử lý!")
+            return
+
+        db.resolve_support_ticket(ticket_id, reply_text)
+
+        msg_cust = (
+            f"💬 **PHẢN HỒI TỪ ADMIN SHOP**\n\n"
+            f"• **Mã yêu cầu:** `#{ticket_id}`\n"
+            f"• **Câu hỏi của bạn:** \"{ticket.get('message')}\"\n\n"
+            f"📝 **Nội dung trả lời từ Admin:**\n"
+            f"{reply_text}\n\n"
+            f"────────────────────\n"
+            f"✨ Cảm ơn bạn đã liên hệ! Nếu vẫn còn thắc mắc, bạn hãy bấm vào mục **💬 Hỗ Trợ Khách Hàng** để tiếp tục gửi câu hỏi nhé! ❤️"
+        )
+        try:
+            await client.send_message(ticket["user_id"], msg_cust)
+            await event.respond(f"✅ Đã gửi phản hồi thành công tới khách hàng @{ticket.get('username') or ticket['user_id']} (`#{ticket_id}`)!")
+        except Exception as e:
+            await event.respond(f"⚠️ Đã lưu phản hồi nhưng không gửi được tới khách: {e}")
+        return
+
+    # XỬ LÝ KHÁCH HÀNG GỬI YÊU CẦU HỖ TRỢ CHO ADMIN
+    if user_states.get(event.sender_id, {}).get("step") == "waiting_customer_support":
+        customer_msg = (event.raw_text or "").strip()
+        if len(customer_msg) < 2:
+            await event.respond("⚠️ Câu hỏi của bạn quá ngắn. Vui lòng nhập nội dung chi tiết để Admin hỗ trợ nhé:")
+            return
+
+        cust_user_id = event.sender_id
+        user_states.pop(cust_user_id, None)
+        sender = await event.get_sender()
+        username = (sender.username or "") if sender else ""
+        first_name = (sender.first_name or "Khách hàng") if sender else "Khách hàng"
+
+        # Tạo ticket trong DB
+        ticket = db.create_support_ticket(cust_user_id, username, first_name, customer_msg)
+
+        # Phản hồi cho khách
+        await event.respond(
+            f"✅ **YÊU CẦU HỖ TRỢ ĐÃ ĐƯỢC GỬI THÀNH CÔNG!**\n\n"
+            f"• **Mã yêu cầu:** `#{ticket['ticket_id']}`\n"
+            f"• **Nội dung:** \"{customer_msg}\"\n\n"
+            f"⚡ Tin nhắn của bạn đã được chuyển tới Admin. Admin sẽ phản hồi trực tiếp qua bot trong thời gian sớm nhất! ❤️",
+            buttons=[[Button.inline("⬅️ Về Menu Chính", b"menu_main")]]
+        )
+
+        # Thông báo cho toàn bộ Admin
+        admin_alert = (
+            f"📩 **YÊU CẦU HỖ TRỢ MỚI TỪ KHÁCH HÀNG!**\n\n"
+            f"• **Khách hàng:** @{username or cust_user_id} (`{cust_user_id}`)\n"
+            f"• **Tên:** {first_name}\n"
+            f"• **Mã hỗ trợ:** `#{ticket['ticket_id']}`\n"
+            f"• **Thời gian:** {ticket['created_at']}\n\n"
+            f"❓ **Nội dung câu hỏi:**\n"
+            f"\"{customer_msg}\""
+        )
+        buttons_admin = [
+            [Button.inline(f"💬 Trả Lời Khách #{ticket['ticket_id']}", f"admin_reply_ticket_{ticket['ticket_id']}".encode())],
+            [Button.url("👤 Nhắn Tin Riêng Cho Khách", f"tg://user?id={cust_user_id}")]
+        ]
+        for aid in ADMIN_IDS:
+            try:
+                await client.send_message(aid, admin_alert, buttons=buttons_admin)
+            except Exception as e:
+                logger.error(f"Lỗi gửi thông báo hỗ trợ cho admin {aid}: {e}")
         return
 
     # XỬ LÝ PHƯƠNG THỨC 2: NHẬP MÃ GIỚI THIỆU 8 KÝ TỰ (dạng /abcsf... hoặc abcsf...)
@@ -1637,11 +1773,8 @@ async def handle_paid_order(user_id: int, order_id: str):
 
 async def show_admin_panel(event, is_callback=False):
     stats = db.get_statistics()
-    pending = db.get_pending_delivery_orders()
-    is_incognito = db.is_admin_incognito()
-
-    incognito_status = "🟢 ĐANG BẬT (Đã ẩn toàn bộ thông tin/ID Admin)" if is_incognito else "🔴 ĐANG TẮT (Hiện thông tin liên hệ)"
-    toggle_text = "👁️ Tắt Ẩn Danh (Hiện Thông Tin)" if is_incognito else "🕶️ Bật Ẩn Danh (Giấu Thông Tin Admin)"
+    pending_orders = db.get_pending_delivery_orders()
+    pending_support = db.count_pending_support_tickets()
 
     text = (
         f"👑 **BẢNG ĐIỀU KHIỂN QUẢN TRỊ VIÊN (ADMIN)**\n\n"
@@ -1651,14 +1784,14 @@ async def show_admin_panel(event, is_callback=False):
         f"• Tổng số đơn hàng: `{stats['total_orders']}` (Đã thanh toán: `{stats['paid_orders_count']}`)\n"
         f"• Đơn hàng hôm nay: `{stats['today_orders_count']}` đơn\n"
         f"• Tổng khách hàng: `{stats['total_users']}` người\n"
-        f"• ⏳ **Đơn đang chờ bàn giao:** `{len(pending)}` đơn\n\n"
-        f"🕶️ **Chế độ ẩn danh Admin:** {incognito_status}\n\n"
+        f"• ⏳ **Đơn đang chờ bàn giao:** `{len(pending_orders)}` đơn\n"
+        f"• 💬 **Khách đang chờ hỗ trợ:** `{pending_support}` người\n\n"
         f"Chọn chức năng quản trị bên dưới:"
     )
 
     buttons = [
-        [Button.inline(toggle_text, b"admin_toggle_incognito")],
-        [Button.inline("📋 Xem Đơn Chờ Bàn Giao", b"admin_pending_orders")],
+        [Button.inline(f"💬 Yêu Cầu Hỗ Trợ ({pending_support} chờ duyệt)", b"admin_support_list")],
+        [Button.inline(f"📋 Xem Đơn Chờ Bàn Giao ({len(pending_orders)})", b"admin_pending_orders")],
         [
             Button.inline("💾 Sao Lưu Dữ Liệu (/backup)", b"admin_backup"),
             Button.inline("📢 Gửi Thông Báo (Broadcast)", b"admin_broadcast")

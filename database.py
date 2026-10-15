@@ -14,6 +14,7 @@ class Database:
         self.data = {
             "users": {},
             "orders": {},
+            "support_tickets": {},
             "stats": {
                 "total_revenue": 0,
                 "total_orders": 0
@@ -36,6 +37,8 @@ class Database:
                             self.data["users"] = {}
                         if "orders" not in self.data:
                             self.data["orders"] = {}
+                        if "support_tickets" not in self.data:
+                            self.data["support_tickets"] = {}
                         if "stats" not in self.data:
                             self.data["stats"] = {"total_revenue": 0, "total_orders": 0}
                         if "settings" not in self.data:
@@ -354,6 +357,54 @@ class Database:
             "today_orders_count": len(today_orders),
             "today_revenue": today_revenue
         }
+
+    # ------------------ SUPPORT TICKETS ------------------
+    def create_support_ticket(self, user_id: int, username: str, first_name: str, message: str) -> dict:
+        """Tạo yêu cầu hỗ trợ mới từ khách hàng"""
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ticket_id = f"SP{int(time.time() * 10) % 900000 + 100000}"
+        ticket = {
+            "ticket_id": ticket_id,
+            "user_id": user_id,
+            "username": username or "",
+            "first_name": first_name or "",
+            "message": message,
+            "status": "PENDING", # PENDING, REPLIED
+            "created_at": now_str,
+            "replied_at": None,
+            "reply_text": ""
+        }
+        if "support_tickets" not in self.data:
+            self.data["support_tickets"] = {}
+        self.data["support_tickets"][ticket_id] = ticket
+        self.save()
+        return ticket
+
+    def get_support_ticket(self, ticket_id: str):
+        """Lấy thông tin 1 yêu cầu hỗ trợ"""
+        return self.data.get("support_tickets", {}).get(ticket_id)
+
+    def get_pending_support_tickets(self) -> list:
+        """Lấy danh sách các yêu cầu hỗ trợ chưa được admin trả lời"""
+        tickets = list(self.data.get("support_tickets", {}).values())
+        pending = [t for t in tickets if t.get("status") == "PENDING"]
+        pending.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return pending
+
+    def count_pending_support_tickets(self) -> int:
+        """Đếm số khách hàng đang chờ hỗ trợ"""
+        return len(self.get_pending_support_tickets())
+
+    def resolve_support_ticket(self, ticket_id: str, reply_text: str) -> bool:
+        """Đánh dấu yêu cầu hỗ trợ đã được admin trả lời"""
+        ticket = self.get_support_ticket(ticket_id)
+        if ticket:
+            ticket["status"] = "REPLIED"
+            ticket["replied_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            ticket["reply_text"] = reply_text
+            self.save()
+            return True
+        return False
 
 # Khởi tạo instance cơ sở dữ liệu dùng chung
 db = Database()
