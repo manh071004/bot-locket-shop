@@ -1,8 +1,36 @@
+# ==========================================
+# MONOREPO .gitignore
+# ==========================================
+
+# Python cache - tất cả các bot
 __pycache__/
+*.pyc
+*.pyo
+
+# Session files Telethon - tất cả các bot
 *.session
 *.session-journal
+
+# Log files
 *.log
+
+# File .env chứa token bí mật - KHÔNG BAO GIỜ commit
 .env
+bot-v2/.env
+bot-tao/.env
+
+# Database JSON local (chỉ lưu trên server)
 db.json
 db.json.tmp
 db.json.corrupt.*
+bot-v2/db.json
+bot-v2/db.json.tmp
+bot-tao/db.json
+bot-tao/db.json.tmp
+
+# ==========================================
+# THÊM BOT MỚI: bổ sung dòng .env và db.json tương ứng
+# Ví dụ bot-moi:
+# bot-moi/.env
+# bot-moi/db.json
+# ==========================================
