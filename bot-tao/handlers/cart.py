@@ -166,19 +166,28 @@ async def show_orders(query, tg_id: int, slug: str):
         return
 
     status_emoji = {"pending": "⏳", "paid": "✅", "completed": "🎉", "cancelled": "❌"}
-    text = "📋 <b>Lịch sử đơn hàng</b>\n\n"
+    status_label = {"pending": "Chờ Thanh Toán", "paid": "Đã Thanh Toán", "completed": "Hoàn Thành", "cancelled": "Đã Hủy"}
+    text = "📋 <b>Lịch sử đơn hàng của bạn:</b>\n\n"
 
+    keyboard = []
     for order in orders:
         emoji = status_emoji.get(order["status"], "📦")
+        label = status_label.get(order["status"], order["status"].upper())
+        dt_str = order['created_at'].strftime('%d/%m/%Y %H:%M') if hasattr(order['created_at'], 'strftime') else str(order['created_at'])
         text += (
-            f"{emoji} <b>{order['order_code']}</b> - {format_price(order['total_amount'])}\n"
-            f"   Trạng thái: {order['status'].upper()}\n"
-            f"   Ngày: {order['created_at'].strftime('%d/%m/%Y %H:%M')}\n\n"
+            f"{emoji} Mã đơn: <b>{order['order_code']}</b> - {format_price(order['total_amount'])}\n"
+            f"   Trạng thái: <b>{label}</b>\n"
+            f"   Ngày đặt: {dt_str}\n\n"
         )
+        if order["status"] == "pending":
+            keyboard.append([
+                InlineKeyboardButton(f"✅ Báo Đã Thanh Toán #{order['order_code']}", callback_data=f"order_paid_{order['order_code']}")
+            ])
+
+    keyboard.append([InlineKeyboardButton("🏠 Trang chủ", callback_data="home")])
 
     await query.edit_message_text(
         text, parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🏠 Trang chủ", callback_data="home")
-        ]])
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
+

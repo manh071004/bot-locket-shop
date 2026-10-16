@@ -22,6 +22,10 @@ from db_helper import (
     get_customer_lock,
     set_customer_lock,
     remove_customer_lock,
+    get_store_by_owner_telegram_id,
+    get_store_stats_for_owner,
+    get_store_by_id,
+    get_owner_telegram_id,
 )
 from cart_store import set_user_store, get_user_store, get_cart_count
 
@@ -99,13 +103,22 @@ def link_email_via_api(email: str, code: str, tg_id: int, tg_username: str = "")
         return {"error": str(e)}
 
 
-def get_bottom_reply_keyboard(is_admin: bool = False):
-    """Bàn phím menu dưới đáy chat tiện lợi cho khách hoặc Admin"""
+def get_bottom_reply_keyboard(is_admin: bool = False, is_owner: bool = False):
+    """Bàn phím menu dưới đáy chat tiện lợi cho khách, Chủ shop hoặc SuperAdmin"""
     if is_admin:
         return ReplyKeyboardMarkup(
             [
                 ["🛍️ Bảng Giá Sản Phẩm", "🔍 Tìm Cửa Hàng (Mã 4 Số)"],
                 ["👑 Quản Trị Cửa Hàng", "🛒 Giỏ Hàng"],
+                ["💬 Hỗ Trợ Khách Hàng"]
+            ],
+            resize_keyboard=True
+        )
+    if is_owner:
+        return ReplyKeyboardMarkup(
+            [
+                ["👑 Bảng Quản Trị Shop", "🛍️ Xem Shop Của Tôi"],
+                ["📋 Đơn Hàng Của Shop", "🛒 Giỏ Hàng"],
                 ["💬 Hỗ Trợ Khách Hàng"]
             ],
             resize_keyboard=True
@@ -120,14 +133,143 @@ def get_bottom_reply_keyboard(is_admin: bool = False):
     )
 
 
+async def show_store_owner_home(update: Update, context: ContextTypes.DEFAULT_TYPE, store: dict):
+    """Trang điều khiển dành riêng cho Chủ cửa hàng khi liên kết Telegram với Web."""
+    stats = await get_store_stats_for_owner(store["id"])
+    store_code = store.get("store_code") or "8868"
+    bot_link = f"https://t.me/{BOT_USERNAME}?start=store_{store['store_slug']}"
+
+    text = (
+        f"👑 <b>CHÀO MỪNG QUẢN TRỊ VIÊN CỬA HÀNG!</b>\n\n"
+        f"🏪 Cửa hàng: <b>{store['store_name']}</b>\n"
+        f"🔢 Mã định danh 4 số: <code>#{store_code}</code>\n"
+        f"👤 Tài khoản Web: <code>{store.get('owner_email') or 'Chính chủ'}</code>\n"
+        f"💎 Gói dịch vụ: <b>{str(store.get('owner_plan', 'free')).upper()}</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "📊 <b>THỐNG KÊ KINH DOANH CỦA SHOP:</b>\n"
+        f"• 💰 Doanh thu thực tế: <b>{stats['total_revenue']:,} VNĐ</b>\n"
+        f"• 📦 Sản phẩm đang bán: <b>{stats['products_count']}</b> món\n"
+        f"• 🛒 Tổng đơn hàng: <b>{stats['orders_count']}</b> đơn\n"
+        f"• 🔒 Khách hàng gắn chết: <b>{stats['locked_customers_count']}</b> người\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "✨ <i>Mỗi khi có đơn hàng mới hoặc khách bấm nút 'Hỗ trợ', Bot sẽ tự động gửi tin nhắn trực tiếp vào đây để bạn hỗ trợ khách ngay lập tức!</i>\n\n"
+        "👇 <b>Chọn chức năng quản lý:</b>"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("🛍️ Mở Cửa Hàng Của Tôi (Góc Nhìn Khách)", callback_data=f"owner_view_shop_{store['store_slug']}")],
+        [InlineKeyboardButton("📋 Danh Sách Đơn Hàng Của Shop", callback_data=f"owner_orders_{store['id']}")],
+        [InlineKeyboardButton("🔗 Lấy Link Bot & Mã Định Danh 4 Số", callback_data=f"owner_share_link_{store['id']}")],
+        [InlineKeyboardButton("💬 Hướng Dẫn Hỗ Trợ Khách Hàng", callback_data=f"owner_support_info_{store['id']}")],
+        [
+            InlineKeyboardButton("🌐 Web Quản Trị Cửa Hàng", url=f"{DASHBOARD_URL}/dashboard"),
+            InlineKeyboardButton("💬 Hỗ Trợ Admin Tối Cao", url=f"https://t.me/{ADMIN_CONTACT}"),
+        ]
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    bottom_kb = get_bottom_reply_keyboard(is_admin=False, is_owner=True)
+    if update.message:
+        await update.message.reply_text(
+            f"👑 Xin chào Chủ cửa hàng <b>{store['store_name']}</b>!",
+            parse_mode="HTML",
+            reply_markup=bottom_kb
+        )
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    elif update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=reply_markup)
+
+
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    args = context.args  # ["store_SLUG"] hoặc ["code_1234"] hoặc ["1234"] hoặc []
+    args = context.args  # ["store_SLUG"] hoặc ["code_1234"] hoặc ["1234"] hoặc ["claim_..."]
     is_admin = is_admin_user(user)
 
-    # 1. KIỂM TRA KHÁCH HÀNG ĐÃ BỊ GẮN CHẾT VỚI CỬA HÀNG NÀO CHƯA (STICKY CUSTOMER LOCK)
-    # (Trừ Admin tối cao để admin test tự do)
-    if not is_admin:
+    # ══════════════════════════════════════════════════════════════════════════
+    # 0. ƯU TIÊN SỐ 1: LIÊN KẾT QUYỀN ADMIN CỬA HÀNG QUA LINK (claim_ / admin_)
+    # ══════════════════════════════════════════════════════════════════════════
+    # Dù tài khoản Telegram này trước đó từng bị khóa vào shop khác làm khách hàng,
+    # việc liên kết làm Admin cửa hàng luôn được ƯU TIÊN TUYỆT ĐỐI và tự động gỡ khóa khách hàng!
+    if args:
+        arg = args[0].strip()
+        if arg.startswith("admin_") or arg.startswith("claim_"):
+            target_key = arg.replace("admin_", "").replace("claim_", "").strip()
+            from db_helper import link_owner_telegram_by_code
+            result = await link_owner_telegram_by_code(target_key, user.id)
+            status = result.get("status")
+            store = result.get("store")
+
+            if status == "success":
+                # Đã liên kết Admin thành công -> Gỡ bỏ hoàn toàn khóa khách hàng cũ
+                await remove_customer_lock(user.id)
+                set_user_store(user.id, store["store_slug"])
+                username_str = f"@{user.username}" if user.username else f"ID: {user.id}"
+                if update.message:
+                    await update.message.reply_text(
+                        f"🎉 <b>LIÊN KẾT CHỦ CỬA HÀNG THÀNH CÔNG! (1 LẦN DUY NHẤT)</b>\n\n"
+                        f"👑 Tài khoản Telegram: <b>{username_str}</b>\n"
+                        f"🏪 Cửa hàng: <b>{store['store_name']}</b> (Mã #{store.get('store_code') or 'Shop'})\n\n"
+                        f"🔒 <b>Lưu ý bảo mật:</b> Link liên kết này <b>đã hết hiệu lực ngay lập tức</b>. Hệ thống không cho phép bất kỳ tài khoản Telegram nào khác gắn vào cửa hàng này nữa.\n\n"
+                        f"✅ <b>Quyền hạn đã kích hoạt:</b>\n"
+                        f"• Nhận thông báo tức thì khi có khách đặt hàng.\n"
+                        f"• Nhận thông báo kèm nút <b>[✅ Duyệt Đơn Này]</b> khi khách chuyển khoản.\n"
+                        f"• Nhận tin nhắn hỗ trợ từ khách và chat trực tiếp với khách.\n\n"
+                        f"👇 Bấm nút bên dưới để mở Bảng điều khiển cửa hàng:",
+                        parse_mode="HTML"
+                    )
+                await show_store_owner_home(update, context, store)
+                return
+
+            elif status == "already_self":
+                await remove_customer_lock(user.id)
+                set_user_store(user.id, store["store_slug"])
+                if update.message:
+                    await update.message.reply_text(
+                        f"👑 <b>BẠN ĐÃ LÀ ADMIN CỦA CỬA HÀNG NÀY RỒI!</b>\n\n"
+                        f"🏪 Cửa hàng: <b>{store['store_name']}</b>\n"
+                        f"Tài khoản Telegram của bạn đã được gắn cố định với cửa hàng.",
+                        parse_mode="HTML"
+                    )
+                await show_store_owner_home(update, context, store)
+                return
+
+            elif status == "already_claimed":
+                if update.message:
+                    await update.message.reply_text(
+                        "⛔ <b>LINK LIÊN KẾT ĐÃ HẾT HIỆU LỰC!</b>\n\n"
+                        "Cửa hàng này <b>đã được liên kết với một tài khoản Telegram Admin khác trước đó</b>. Hệ thống chỉ cho phép liên kết 1 lần duy nhất và đã khóa quyền gắn tài khoản để chống chiếm đoạt quyền quản trị.\n\n"
+                        "👉 Nếu bạn là chủ sở hữu hợp pháp và muốn đổi nick Telegram, vui lòng đăng nhập vào Web Quản Trị bằng Email & Mật khẩu để tạo lại link mới.",
+                        parse_mode="HTML"
+                    )
+                return
+
+            else:
+                if update.message:
+                    await update.message.reply_text(
+                        "⚠️ <b>Link liên kết không hợp lệ hoặc đã hết hạn!</b>\n"
+                        "Vui lòng đăng nhập vào trang quản trị Web để lấy link mới nhất.",
+                        parse_mode="HTML"
+                    )
+                return
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # 1. KIỂM TRA NGƯỜI DÙNG CÓ PHẢI CHỦ CỬA HÀNG KHÔNG (STORE OWNER)
+    # ══════════════════════════════════════════════════════════════════════════
+    owner_store = await get_store_by_owner_telegram_id(user.id)
+    if owner_store:
+        # Nếu đã là Admin/Chủ shop, tự động xóa mọi customer_lock cũ
+        await remove_customer_lock(user.id)
+        if not args:
+            set_user_store(user.id, owner_store["store_slug"])
+            await show_store_owner_home(update, context, owner_store)
+            return
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # 2. KIỂM TRA KHÁCH HÀNG ĐÃ BỊ GẮN CHẾT VỚI CỬA HÀNG NÀO CHƯA (STICKY CUSTOMER LOCK)
+    # ══════════════════════════════════════════════════════════════════════════
+    # (Chỉ áp dụng với khách thông thường, KHÔNG áp dụng với SuperAdmin hoặc Chủ shop)
+    if not is_admin and not owner_store:
         lock = await get_customer_lock(user.id)
         if lock:
             store = await get_store_by_slug(lock["store_slug"])
@@ -145,10 +287,23 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         )
                 await show_store_home(update, context, store)
                 return
+            else:
+                # Cửa hàng đã hết hạn hoặc bị xóa khỏi hệ thống -> Gỡ khóa ngay để khách tự do!
+                await remove_customer_lock(user.id)
+                if update.message:
+                    await update.message.reply_text(
+                        "ℹ️ <b>THÔNG BÁO HỆ THỐNG:</b>\n"
+                        "Cửa hàng trước đây bạn từng liên kết hiện đã <b>tạm dừng hoạt động hoặc đã bị đóng cửa</b>.\n\n"
+                        "✅ Tài khoản của bạn đã được <b>mở khóa tự do</b>. Bạn có thể sử dụng các dịch vụ chính hoặc liên kết mua sắm tại bất kỳ cửa hàng nào khác!",
+                        parse_mode="HTML"
+                    )
 
-    # 2. KHÁCH MỚI / ADMIN VÀO QUA DEEP LINK HOẶC MÃ ĐỊNH DANH 4 SỐ
+    # ══════════════════════════════════════════════════════════════════════════
+    # 3. KHÁCH MỚI / CHỦ SHOP VÀO QUA DEEP LINK HOẶC MÃ ĐỊNH DANH 4 SỐ
+    # ══════════════════════════════════════════════════════════════════════════
     if args:
         arg = args[0].strip()
+
         # Deep link theo slug: store_<slug>
         if arg.startswith("store_"):
             slug = arg[len("store_"):]
@@ -166,6 +321,13 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                 await show_store_home(update, context, store)
                 return
+            else:
+                if update.message:
+                    await update.message.reply_text(
+                        "⚠️ <b>Cửa hàng này hiện đang tạm dừng hoạt động hoặc không tồn tại!</b>\n"
+                        "Vui lòng liên hệ chủ cửa hàng để kiểm tra hoặc trải nghiệm các dịch vụ khác của BotStore.",
+                        parse_mode="HTML"
+                    )
 
         # Deep link theo mã 4 số: code_<4digits> hoặc <4digits>
         code_candidate = arg.replace("code_", "")
@@ -184,6 +346,12 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                 await show_store_home(update, context, store)
                 return
+            else:
+                if update.message:
+                    await update.message.reply_text(
+                        f"⚠️ <b>Không tìm thấy cửa hàng với mã #{code_candidate} hoặc cửa hàng đã hết hạn dịch vụ!</b>",
+                        parse_mode="HTML"
+                    )
 
     # 3. KHÁCH CHƯA CÓ SHOP VÀO BOT TRỰC TIẾP
     await show_service_intro(update)
@@ -271,6 +439,140 @@ async def plan_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     if data == "show_plans":
         await show_service_intro(update)
+        return
+
+    # ─── CALLBACKS DÀNH CHO CHỦ CỬA HÀNG ───
+    if data == "owner_home":
+        owner_store = await get_store_by_owner_telegram_id(user.id)
+        if owner_store:
+            await show_store_owner_home(update, context, owner_store)
+        else:
+            await show_service_intro(update)
+        return
+
+    if data.startswith("owner_view_shop_"):
+        slug = data.replace("owner_view_shop_", "")
+        store = await get_store_by_slug(slug)
+        if store:
+            set_user_store(user.id, store["store_slug"])
+            await show_store_home(update, context, store)
+        return
+
+    if data.startswith("owner_orders_"):
+        store_id = int(data.replace("owner_orders_", ""))
+        store = await get_store_by_id(store_id)
+        import sqlite3
+        from db_helper import DB_FILE
+        rows = []
+        try:
+            with sqlite3.connect(DB_FILE) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.cursor().execute(
+                    "SELECT * FROM orders WHERE store_id = ? ORDER BY id DESC LIMIT 10", (store_id,)
+                ).fetchall()
+        except Exception:
+            pass
+
+        if not rows:
+            text = (
+                f"📋 <b>ĐƠN HÀNG CỦA CỬA HÀNG: {store['store_name'] if store else ''}</b>\n\n"
+                "Hiện tại shop của bạn chưa có đơn hàng nào phát sinh.\n"
+                "Hãy chia sẻ link bot hoặc mã 4 số để đón những khách hàng đầu tiên!"
+            )
+        else:
+            text = f"📋 <b>10 ĐƠN HÀNG GẦN NHẤT - {store['store_name'] if store else ''}:</b>\n\n"
+            for r in rows:
+                st_emoji = "✅" if r["status"] in ["paid", "completed"] else "⏳"
+                text += f"{st_emoji} <b>{r['order_code']}</b>: {r['total_amount']:,}đ\n"
+                text += f"   • Khách: {r['customer_name'] or 'Khách'} (ID: <code>{r['customer_tg_id']}</code>)\n"
+                text += f"   • Trạng thái: <b>{r['status'].upper()}</b>\n\n"
+
+        keyboard = [
+            [InlineKeyboardButton("⬅️ Về Bảng Quản Trị", callback_data="owner_home")],
+            [InlineKeyboardButton("🌐 Quản Trị Đơn Chi Tiết Trên Web", url=f"{DASHBOARD_URL}/dashboard/orders")]
+        ]
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    if data.startswith("owner_share_link_"):
+        store_id = int(data.replace("owner_share_link_", ""))
+        store = await get_store_by_id(store_id)
+        if store:
+            store_code = store.get("store_code") or "8868"
+            bot_link = f"https://t.me/{BOT_USERNAME}?start=store_{store['store_slug']}"
+            text = (
+                f"🔗 <b>LINK BOT & MÃ ĐỊNH DANH 4 SỐ CỦA SHOP BẠN:</b>\n\n"
+                f"🏪 Cửa hàng: <b>{store['store_name']}</b>\n\n"
+                f"🔢 <b>MÃ 4 SỐ ĐỊNH DANH DUY NHẤT:</b>\n"
+                f"👉 <code>{store_code}</code> 👈 <i>(Khách chỉ cần gõ {store_code} vào bot là vào shop!)</i>\n\n"
+                f"📎 <b>LINK BOT BÁN HÀNG:</b>\n"
+                f"👉 <code>{bot_link}</code> 👈\n\n"
+                f"🔒 <b>Cơ chế Khóa Khách Hàng (Lock-in):</b>\n"
+                "Khi khách hàng dùng link hoặc nhập mã này, tài khoản của khách sẽ được <b>gắn chết vĩnh viễn với shop của bạn</b> để chống cạnh tranh!"
+            )
+            keyboard = [
+                [InlineKeyboardButton("🚀 Mở Thử Shop Của Tôi", url=bot_link)],
+                [InlineKeyboardButton("⬅️ Về Bảng Quản Trị", callback_data="owner_home")]
+            ]
+            await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    if data.startswith("owner_support_info_"):
+        store_id = int(data.replace("owner_support_info_", ""))
+        store = await get_store_by_id(store_id)
+        text = (
+            f"💬 <b>HỆ THỐNG HỖ TRỢ KHÁCH HÀNG TỰ ĐỘNG - {store['store_name'] if store else ''}</b>\n\n"
+            "⚡ <b>Cơ chế hỗ trợ khách hàng:</b>\n"
+            "1️⃣ Tất cả khách hàng trong shop của bạn đều có nút <b>'💬 Hỗ Trợ Khách Hàng'</b>.\n"
+            "2️⃣ Khi khách bấm nút và gửi tin nhắn, <b>Bot sẽ gửi ngay tin nhắn của khách vào đây cho bạn</b>!\n"
+            "3️⃣ Bạn chỉ cần bấm nút <b>'↩️ Trả Lời Khách Hàng'</b>, Bot sẽ chuyển câu trả lời của bạn tới khách hàng ngay lập tức!\n"
+            "4️⃣ Khi có đơn hàng mới phát sinh, Bot cũng gửi thông tin chi tiết đơn hàng cho bạn kèm nút chat với khách."
+        )
+        keyboard = [
+            [InlineKeyboardButton("⬅️ Về Bảng Quản Trị", callback_data="owner_home")]
+        ]
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    # ─── NÚT HỖ TRỢ DÀNH CHO KHÁCH HÀNG ───
+    if data.startswith("support_store_"):
+        store_id = int(data.replace("support_store_", ""))
+        store = await get_store_by_id(store_id)
+        store_name = store["store_name"] if store else "Cửa hàng"
+        context.user_data["awaiting_support_store_id"] = store_id
+
+        text = (
+            f"💬 <b>HỖ TRỢ KHÁCH HÀNG - {store_name}</b>\n\n"
+            "Bạn đang cần Chủ cửa hàng tư vấn, giải đáp thắc mắc hoặc hỗ trợ đơn hàng?\n\n"
+            "👉 <b>Hãy nhập nội dung câu hỏi/tin nhắn của bạn vào khung chat bên dưới và gửi đi.</b>\n"
+            "Bot sẽ chuyển trực tiếp tin nhắn của bạn cho Chủ cửa hàng để phản hồi sớm nhất có thể!"
+        )
+        keyboard = [
+            [InlineKeyboardButton("⬅️ Quay Lại Mua Sắm", callback_data=f"owner_view_shop_{store['store_slug']}")] if store else [InlineKeyboardButton("⬅️ Quay Lại", callback_data="show_plans")]
+        ]
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    # ─── NÚT TRẢ LỜI KHÁCH HÀNG DÀNH CHO CHỦ SHOP ───
+    if data.startswith("reply_cust_"):
+        parts = data.split("_")
+        customer_id = int(parts[2])
+        store_id = int(parts[3])
+        store = await get_store_by_id(store_id)
+        context.user_data["replying_to_customer"] = {
+            "customer_id": customer_id,
+            "store_id": store_id,
+        }
+        text = (
+            f"✏️ <b>TRẢ LỜI TIN NHẮN KHÁCH HÀNG (ID: <code>{customer_id}</code>)</b>\n\n"
+            f"Cửa hàng: <b>{store['store_name'] if store else ''}</b>\n\n"
+            "👉 <b>Hãy nhập nội dung câu trả lời của bạn vào khung chat bên dưới và gửi đi.</b>\n"
+            "Bot sẽ gửi trực tiếp câu trả lời của bạn tới khách hàng ngay lập tức!"
+        )
+        keyboard = [
+            [InlineKeyboardButton("❌ Hủy Bỏ", callback_data="owner_home")]
+        ]
+        await query.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     # NÚT BẤM TÌM CỬA HÀNG
@@ -449,6 +751,105 @@ async def bottom_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     text = (update.message.text or "").strip()
     is_admin = is_admin_user(user)
 
+    # ─── 0. XỬ LÝ KHÁCH HÀNG GỬI YÊU CẦU HỖ TRỢ CHO CHỦ CỬA HÀNG ───
+    if context.user_data.get("awaiting_support_store_id"):
+        store_id = context.user_data.pop("awaiting_support_store_id")
+        store = await get_store_by_id(store_id)
+        owner_tg_id = await get_owner_telegram_id(store_id)
+        store_name = store["store_name"] if store else "Cửa hàng"
+
+        # 1. Báo xác nhận cho khách hàng
+        await update.message.reply_text(
+            f"✅ <b>Yêu cầu hỗ trợ của bạn đã được gửi thành công!</b>\n\n"
+            f"Chủ cửa hàng <b>{store_name}</b> đã nhận được tin nhắn và sẽ trả lời bạn sớm nhất có thể.\n\n"
+            f"📝 <b>Nội dung đã gửi:</b> <i>\"{text}\"</i>",
+            parse_mode="HTML"
+        )
+
+        # 2. Chuyển tiếp tin nhắn cho Chủ cửa hàng
+        if owner_tg_id:
+            customer_name = user.full_name or user.first_name or "Khách hàng"
+            customer_uname = f"@{user.username}" if user.username else "Không có username"
+            owner_msg = (
+                f"📩 <b>YÊU CẦU HỖ TRỢ TỪ KHÁCH HÀNG!</b>\n\n"
+                f"🏪 Cửa hàng: <b>{store_name}</b>\n"
+                f"👤 Khách hàng: <b>{customer_name}</b> ({customer_uname})\n"
+                f"🆔 Telegram ID: <code>{user.id}</code>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"💬 <b>Nội dung tin nhắn khách gửi:</b>\n"
+                f"<i>\"{text}\"</i>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"👉 Bấm nút <b>'↩️ Trả Lời Khách Hàng'</b> bên dưới để trả lời lại ngay qua Bot:"
+            )
+            buttons = [
+                [InlineKeyboardButton("↩️ Trả Lời Khách Hàng", callback_data=f"reply_cust_{user.id}_{store_id}")]
+            ]
+            if user.username:
+                buttons.append([InlineKeyboardButton("💬 Chat Telegram Trực Tiếp", url=f"https://t.me/{user.username}")])
+
+            import httpx
+            from config import BOT_TOKEN
+            async with httpx.AsyncClient() as client:
+                try:
+                    await client.post(
+                        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                        json={
+                            "chat_id": owner_tg_id,
+                            "text": owner_msg,
+                            "parse_mode": "HTML",
+                            "reply_markup": {"inline_keyboard": [[b.to_dict() for b in row] for row in buttons]},
+                        },
+                        timeout=10,
+                    )
+                except Exception as e:
+                    print(f"[!] Lỗi chuyển tin nhắn cho chủ shop: {e}")
+        return
+
+    # ─── 0.1 XỬ LÝ CHỦ CỬA HÀNG TRẢ LỜI LẠI KHÁCH HÀNG ───
+    if context.user_data.get("replying_to_customer"):
+        target = context.user_data.pop("replying_to_customer")
+        customer_id = target["customer_id"]
+        store_id = target["store_id"]
+        store = await get_store_by_id(store_id)
+        store_name = store["store_name"] if store else "Cửa hàng"
+
+        # Báo cho chủ shop
+        await update.message.reply_text(
+            f"✅ <b>Đã gửi phản hồi thành công tới khách hàng!</b>\n\n"
+            f"Nội dung phản hồi: <i>\"{text}\"</i>",
+            parse_mode="HTML"
+        )
+
+        # Gửi vào Telegram của khách hàng
+        cust_msg = (
+            f"📩 <b>PHẢN HỒI TỪ CHỦ CỬA HÀNG {store_name}!</b>\n\n"
+            f"💬 <i>\"{text}\"</i>\n\n"
+            f"👉 Nếu bạn cần hỏi thêm, hãy bấm nút <b>'💬 Tiếp Tục Hỗ Trợ'</b> bên dưới:"
+        )
+        buttons = [
+            [InlineKeyboardButton("💬 Tiếp Tục Hỗ Trợ", callback_data=f"support_store_{store_id}")]
+        ]
+        if store:
+            buttons.append([InlineKeyboardButton("🛍️ Xem Cửa Hàng", callback_data=f"owner_view_shop_{store['store_slug']}")])
+
+        import httpx
+        from config import BOT_TOKEN
+        async with httpx.AsyncClient() as client:
+            try:
+                await client.post(
+                    f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                    json={
+                        "chat_id": customer_id,
+                        "text": cust_msg,
+                        "parse_mode": "HTML",
+                        "reply_markup": {"inline_keyboard": [[b.to_dict() for b in row] for row in buttons]},
+                    },
+                    timeout=10,
+                )
+            except Exception as e:
+                print(f"[!] Lỗi gửi phản hồi tới khách hàng: {e}")
+        return
+
     # 1. KHÁCH GÕ MÃ ĐỊNH DANH 4 CHỮ SỐ (VD: 8868)
     if text.isdigit() and len(text) == 4:
         # Kiểm tra khách có bị gắn chết với shop khác không
@@ -501,10 +902,21 @@ async def bottom_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             return
 
     # 2. CÁC NÚT BÀN PHÍM ĐÁY MÀN HÌNH
-    if "Quản Trị" in text or text.lower() == "/admin":
+    if "Quản Trị" in text or text.lower() in ["/admin", "/owner"]:
         if is_admin:
             from handlers.admin import show_admin_stores_list
             await show_admin_stores_list(update)
+            return
+        owner_store = await get_store_by_owner_telegram_id(user.id)
+        if owner_store:
+            await show_store_owner_home(update, context, owner_store)
+            return
+
+    if "Xem Shop" in text:
+        owner_store = await get_store_by_owner_telegram_id(user.id)
+        if owner_store:
+            set_user_store(user.id, owner_store["store_slug"])
+            await show_store_home(update, context, owner_store)
             return
 
     if "Tìm Cửa Hàng" in text:
@@ -554,12 +966,68 @@ async def bottom_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                 parse_mode="HTML"
             )
     elif "Đơn Hàng" in text:
+        owner_store = await get_store_by_owner_telegram_id(user.id)
+        if owner_store and "Shop" in text:
+            # Chủ shop muốn xem đơn của shop mình
+            import sqlite3
+            from db_helper import DB_FILE
+            rows = []
+            try:
+                with sqlite3.connect(DB_FILE) as conn:
+                    conn.row_factory = sqlite3.Row
+                    rows = conn.cursor().execute(
+                        "SELECT * FROM orders WHERE store_id = ? ORDER BY id DESC LIMIT 10", (owner_store["id"],)
+                    ).fetchall()
+            except Exception:
+                pass
+            if not rows:
+                await update.message.reply_text(
+                    f"📋 Cửa hàng <b>{owner_store['store_name']}</b> hiện chưa có đơn hàng nào.",
+                    parse_mode="HTML"
+                )
+            else:
+                msg = f"📋 <b>10 ĐƠN HÀNG GẦN NHẤT - {owner_store['store_name']}:</b>\n\n"
+                for r in rows:
+                    st_emoji = "✅" if r["status"] in ["paid", "completed"] else "⏳"
+                    msg += f"{st_emoji} <b>{r['order_code']}</b>: {r['total_amount']:,}đ\n"
+                    msg += f"   • Khách: {r['customer_name'] or 'Khách'} (ID: <code>{r['customer_tg_id']}</code>)\n"
+                    msg += f"   • Trạng thái: <b>{r['status'].upper()}</b>\n\n"
+                await update.message.reply_text(
+                    msg,
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🌐 Quản Trị Đơn Hàng Trên Web", url=f"{DASHBOARD_URL}/dashboard/orders")]
+                    ])
+                )
+            return
+
         await update.message.reply_text(
             "📋 <b>Tra Cứu Đơn Hàng</b>\n\n"
-            f"Mọi đơn hàng của bạn được lưu trữ tự động. Nếu cần hỗ trợ đơn hàng, hãy liên hệ Admin: @{ADMIN_CONTACT}",
+            f"Mọi đơn hàng của bạn được lưu trữ tự động. Nếu cần hỗ trợ đơn hàng, hãy liên hệ Admin hoặc bấm nút 'Hỗ Trợ' bên dưới!",
             parse_mode="HTML"
         )
     elif "Hỗ Trợ" in text:
+        # Kiểm tra xem khách có đang trong 1 shop hoặc gắn kết với shop nào không
+        curr_store = None
+        slug = get_user_store(user.id)
+        if slug:
+            curr_store = await get_store_by_slug(slug)
+        if not curr_store and not is_admin:
+            lock = await get_customer_lock(user.id)
+            if lock:
+                curr_store = await get_store_by_slug(lock["store_slug"])
+
+        if curr_store:
+            context.user_data["awaiting_support_store_id"] = curr_store["id"]
+            await update.message.reply_text(
+                f"💬 <b>HỖ TRỢ KHÁCH HÀNG - {curr_store['store_name']}</b>\n\n"
+                "Bạn đang cần Chủ cửa hàng tư vấn, giải đáp thắc mắc hoặc hỗ trợ đơn hàng?\n\n"
+                "👉 <b>Hãy nhập nội dung câu hỏi/tin nhắn của bạn vào khung chat bên dưới và gửi đi:</b>\n"
+                "Bot sẽ chuyển trực tiếp tin nhắn của bạn cho Chủ cửa hàng để phản hồi ngay!",
+                parse_mode="HTML"
+            )
+            return
+
         await update.message.reply_text(
             "💬 <b>HỖ TRỢ KHÁCH HÀNG 24/7</b>\n\n"
             f"Mọi thắc mắc hoặc cần tư vấn, vui lòng liên hệ Admin:\n"
@@ -569,6 +1037,7 @@ async def bottom_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                 [InlineKeyboardButton("📩 Nhắn Tin Cho Admin", url=f"https://t.me/{ADMIN_CONTACT}")]
             ])
         )
+
     else:
         # Kiểm tra khách có gắn với shop nào không
         if not is_admin:
@@ -619,16 +1088,25 @@ async def show_store_home(update: Update, context: ContextTypes.DEFAULT_TYPE, st
         )])
 
     keyboard.append([InlineKeyboardButton("📦 Tất cả sản phẩm", callback_data=f"cat_{store['id']}_0")])
-    keyboard.append([InlineKeyboardButton("🛒 Xem Giỏ hàng", callback_data=f"cart_view_{store['store_slug']}")])
+    keyboard.append([
+        InlineKeyboardButton("🛒 Xem Giỏ hàng", callback_data=f"cart_view_{store['store_slug']}"),
+        InlineKeyboardButton("💬 Hỗ Trợ Khách Hàng", callback_data=f"support_store_{store['id']}")
+    ])
 
     user = update.effective_user
-    if is_admin_user(user):
+    owner_store = await get_store_by_owner_telegram_id(user.id)
+    if owner_store and owner_store["id"] == store["id"]:
+        keyboard.append([
+            InlineKeyboardButton("👑 [CHỦ SHOP] Về Bảng Quản Trị", callback_data="owner_home")
+        ])
+    elif is_admin_user(user):
         keyboard.append([
             InlineKeyboardButton("👑 [ADMIN] Thoát Khỏi Shop Này", callback_data="show_plans"),
             InlineKeyboardButton("👑 Quản Trị Cửa Hàng", callback_data="admin_list_stores"),
         ])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
+
     if update.message:
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
     elif update.callback_query:
