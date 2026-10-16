@@ -239,3 +239,98 @@ async def get_owner_telegram_id(store_id: int) -> Optional[int]:
             return row["telegram_id"] if row and row["telegram_id"] else None
     except Exception:
         return None
+
+
+async def is_admin_telegram_id(telegram_id: int) -> bool:
+    """Kiểm tra telegram_id có phải admin tối cao trong database không."""
+    try:
+        with get_sqlite_conn() as conn:
+            cur = conn.cursor()
+            row = cur.execute(
+                "SELECT id FROM users WHERE telegram_id = ? AND is_admin = 1",
+                (telegram_id,)
+            ).fetchone()
+            return bool(row)
+    except Exception:
+        return False
+
+
+async def get_all_stores_for_admin() -> List[Dict[str, Any]]:
+    """Lấy danh sách tất cả cửa hàng trong hệ thống cho Admin kiểm soát."""
+    try:
+        with get_sqlite_conn() as conn:
+            cur = conn.cursor()
+            rows = cur.execute(
+                """SELECT s.*, u.email as owner_email, u.full_name as owner_name, u.plan as owner_plan,
+                   (SELECT COUNT(*) FROM products p WHERE p.store_id = s.id) as product_count,
+                   (SELECT COUNT(*) FROM customer_locks c WHERE c.store_id = s.id) as locked_customers_count
+                   FROM store_configs s
+                   LEFT JOIN users u ON u.id = s.user_id
+                   ORDER BY s.id DESC"""
+            ).fetchall()
+            return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"[!] get_all_stores_for_admin error: {e}")
+        return []
+
+
+async def toggle_store_active_db(store_id: int) -> Optional[Dict[str, Any]]:
+    """Bật/Tắt hoạt động của cửa hàng. Nếu tắt, giải phóng tất cả khách hàng bị khóa!"""
+    try:
+        with get_sqlite_conn() as conn:
+            cur = conn.cursor()
+            row = cur.execute("SELECT id, store_name, is_active FROM store_configs WHERE id = ?", (store_id,)).fetchone()
+            if not row:
+                return None
+            new_active = 0 if row["is_active"] == 1 else 1
+            cur.execute("UPDATE store_configs SET is_active = ? WHERE id = ?", (new_active, store_id))
+            freed = 0
+            if new_active == 0:
+                cur.execute("DELETE FROM customer_locks WHERE store_id = ?", (store_id,))
+                freed = cur.rowcount
+            conn.commit()
+            return {
+                "id": store_id,
+                "store_name": row["store_name"],
+                "is_active": new_active,
+                "freed_locks": freed
+            }
+    except Exception as e:
+        print(f"[!] toggle_store_active_db error: {e}")
+        return None
+
+
+async def unlock_all_store_customers_db(store_id: int) -> int:
+    """Mở khóa toàn bộ khách hàng đang gắn chết với shop này."""
+    try:
+        with get_sqlite_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM customer_locks WHERE store_id = ?", (store_id,))
+            freed = cur.rowcount
+            conn.commit()
+            return freed
+    except Exception as e:
+        print(f"[!] unlock_all_store_customers_db error: {e}")
+        return 0
+
+
+async def regenerate_store_code_db(store_id: int) -> Optional[str]:
+    """Cấp lại mã 4 số ngẫu nhiên mới không trùng lặp."""
+    import random
+    try:
+        with get_sqlite_conn() as conn:
+            cur = conn.cursor()
+            for _ in range(100):
+                new_code = str(random.randint(1000, 9999))
+                exist = cur.execute("SELECT id FROM store_configs WHERE store_code = ?", (new_code,)).fetchone()
+                if not exist:
+                    cur.execute("UPDATE store_configs SET store_code = ? WHERE id = ?", (new_code, store_id))
+                    conn.commit()
+                    return new_code
+            fallback = str(random.randint(1000, 9999))
+            cur.execute("UPDATE store_configs SET store_code = ? WHERE id = ?", (fallback, store_id))
+            conn.commit()
+            return fallback
+    except Exception as e:
+        print(f"[!] regenerate_store_code_db error: {e}")
+        return None

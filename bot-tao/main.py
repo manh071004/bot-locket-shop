@@ -12,7 +12,7 @@ from handlers.start import (
 from handlers.catalog import catalog_handler, product_detail_handler
 from handlers.cart import cart_handler, cart_action_handler
 from handlers.checkout import checkout_handler, checkout_action_handler
-from handlers.admin import admin_handler
+from handlers.admin import admin_handler, admin_command_handler, admin_auth_handler
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -24,9 +24,12 @@ logger = logging.getLogger(__name__)
 def create_application() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Lệnh duy nhất: /start
+    # Lệnh khởi động & Quản trị
     app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CommandHandler("menu", start_handler))
+    app.add_handler(CommandHandler("admin", admin_command_handler))
+    app.add_handler(CommandHandler("admin_stores", admin_command_handler))
+    app.add_handler(CommandHandler("admin_auth", admin_auth_handler))
 
     # Callback query handlers (chọn gói, chọn sản phẩm, giỏ hàng)
     app.add_handler(CallbackQueryHandler(plan_callback_handler, pattern=r"^(buy_plan_|paid_check_|show_plans)"))

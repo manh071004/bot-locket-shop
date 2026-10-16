@@ -39,8 +39,19 @@ def is_admin_user(user) -> bool:
         return False
     if user.id in ADMIN_TELEGRAM_IDS:
         return True
-    if user.username and user.username.lower() == ADMIN_CONTACT.lower():
+    if user.username and user.username.lower() in [ADMIN_CONTACT.lower(), "manhkmhd2004", "manh071004"]:
         return True
+    # Kiểm tra đồng bộ từ database users table
+    try:
+        import sqlite3
+        from db_helper import DB_FILE
+        with sqlite3.connect(DB_FILE) as conn:
+            cur = conn.cursor()
+            row = cur.execute("SELECT id FROM users WHERE telegram_id = ? AND is_admin = 1", (user.id,)).fetchone()
+            if row:
+                return True
+    except Exception:
+        pass
     return False
 
 
@@ -88,8 +99,17 @@ def link_email_via_api(email: str, code: str, tg_id: int, tg_username: str = "")
         return {"error": str(e)}
 
 
-def get_bottom_reply_keyboard():
-    """Bàn phím menu dưới đáy chat tiện lợi cho khách bấm chọn ngay"""
+def get_bottom_reply_keyboard(is_admin: bool = False):
+    """Bàn phím menu dưới đáy chat tiện lợi cho khách hoặc Admin"""
+    if is_admin:
+        return ReplyKeyboardMarkup(
+            [
+                ["🛍️ Bảng Giá Sản Phẩm", "🔍 Tìm Cửa Hàng (Mã 4 Số)"],
+                ["👑 Quản Trị Cửa Hàng", "🛒 Giỏ Hàng"],
+                ["💬 Hỗ Trợ Khách Hàng"]
+            ],
+            resize_keyboard=True
+        )
     return ReplyKeyboardMarkup(
         [
             ["🛍️ Bảng Giá Sản Phẩm", "🔍 Tìm Cửa Hàng (Mã 4 Số)"],
@@ -126,7 +146,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await show_store_home(update, context, store)
                 return
 
-    # 2. KHÁCH MỚI VÀO QUA DEEP LINK HOẶC MÃ ĐỊNH DANH 4 SỐ
+    # 2. KHÁCH MỚI / ADMIN VÀO QUA DEEP LINK HOẶC MÃ ĐỊNH DANH 4 SỐ
     if args:
         arg = args[0].strip()
         # Deep link theo slug: store_<slug>
@@ -137,6 +157,13 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if not is_admin:
                     await set_customer_lock(user.id, store["id"], store["store_slug"])
                 set_user_store(user.id, slug)
+                if is_admin and update.message:
+                    await update.message.reply_text(
+                        f"👑 <b>[ADMIN TEST MODE]</b>\n"
+                        f"Đang xem cửa hàng: <b>{store['store_name']}</b> (Mã #{store.get('store_code') or 'N/A'})\n"
+                        f"<i>Tài khoản Admin không bị khóa, bạn có thể tự do test hoặc đổi sang shop khác bất cứ lúc nào!</i>",
+                        parse_mode="HTML"
+                    )
                 await show_store_home(update, context, store)
                 return
 
@@ -148,6 +175,13 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if not is_admin:
                     await set_customer_lock(user.id, store["id"], store["store_slug"])
                 set_user_store(user.id, store["store_slug"])
+                if is_admin and update.message:
+                    await update.message.reply_text(
+                        f"👑 <b>[ADMIN TEST MODE]</b>\n"
+                        f"Đang xem cửa hàng: <b>{store['store_name']}</b> (Mã #{code_candidate})\n"
+                        f"<i>Tài khoản Admin không bị khóa, bạn có thể tự do test hoặc đổi sang shop khác bất cứ lúc nào!</i>",
+                        parse_mode="HTML"
+                    )
                 await show_store_home(update, context, store)
                 return
 
@@ -165,20 +199,21 @@ async def show_service_intro(update: Update):
             f"👑 <b>CHẾ ĐỘ QUẢN TRỊ VIÊN (ADMIN TEST MODE)</b>\n\n"
             f"Xin chào Sếp <b>Võ Đức Mạnh</b> (@{ADMIN_CONTACT})!\n"
             "Hệ thống nhận diện bạn là <b>Admin tối cao</b>.\n\n"
-            "⚡ <b>QUYỀN LỢI TEST CỦA BẠN:</b>\n"
-            "• Bạn <b>KHÔNG CẦN CHUYỂN KHOẢN</b> bất kỳ khoản tiền nào.\n"
-            "• Nhận Mã Liên Kết test 0đ cho cả Gói 1 Tháng & Gói Vĩnh Viễn.\n"
-            "• Nhận Mã Định Danh 4 số ngẫu nhiên duy nhất cho cửa hàng.\n"
-            "• Nhận Link Bot bán hàng riêng ngay lập tức!\n\n"
+            "⚡ <b>QUYỀN LỢI & CÔNG CỤ TEST CỦA BẠN:</b>\n"
+            "• Bạn <b>KHÔNG BỊ KHÓA</b> vào bất kỳ cửa hàng nào.\n"
+            "• Quản trị & kiểm soát toàn bộ cửa hàng trên hệ thống.\n"
+            "• Bật/Tắt shop, mở khóa khách hàng, sinh lại mã 4 số.\n"
+            "• Test mua hàng 0đ cho cả Gói 1 Tháng & Gói Vĩnh Viễn.\n\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "👇 <b>Chọn chức năng Admin muốn test bên dưới:</b>"
+            "👇 <b>Chọn chức năng Admin muốn điều khiển:</b>"
         )
         keyboard = [
+            [InlineKeyboardButton("👑 [ADMIN] Quản Trị Toàn Bộ Cửa Hàng", callback_data="admin_list_stores")],
             [InlineKeyboardButton("⚡ [ADMIN TEST 0đ] Lấy Mã Gói 1 Tháng", callback_data="admin_test_monthly")],
             [InlineKeyboardButton("👑 [ADMIN TEST 0đ] Lấy Mã Gói Vĩnh Viễn", callback_data="admin_test_lifetime")],
             [InlineKeyboardButton("🔗 [ADMIN] Lấy Ngay Link Bot & Mã 4 Số", callback_data="admin_quick_link")],
             [
-                InlineKeyboardButton("🌐 Mở Web Quản Trị", url=DASHBOARD_URL),
+                InlineKeyboardButton("🌐 Web Quản Trị Shop", url=f"{DASHBOARD_URL}/dashboard/admin-stores"),
                 InlineKeyboardButton("💬 Nhắn Tin Admin", url=f"https://t.me/{ADMIN_CONTACT}"),
             ]
         ]
@@ -218,7 +253,7 @@ async def show_service_intro(update: Update):
     if update.message:
         await update.message.reply_text(
             "📱 Bàn phím Menu chức năng đã sẵn sàng bên dưới!",
-            reply_markup=get_bottom_reply_keyboard()
+            reply_markup=get_bottom_reply_keyboard(is_admin)
         )
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
     elif update.callback_query:
@@ -438,13 +473,22 @@ async def bottom_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             if not is_admin:
                 await set_customer_lock(user.id, store["id"], store["store_slug"])
             set_user_store(user.id, store["store_slug"])
-            await update.message.reply_text(
-                f"🎉 <b>ĐÃ TÌM THẤY & LIÊN KẾT THÀNH CÔNG!</b>\n\n"
-                f"🏪 Cửa hàng: <b>{store['store_name']}</b>\n"
-                f"🔢 Mã định danh: <code>#{text}</code>\n\n"
-                "🔒 <i>Tài khoản của bạn đã được gắn cố định với cửa hàng này để đảm bảo quyền lợi bảo hành đơn hàng!</i>",
-                parse_mode="HTML"
-            )
+            if is_admin:
+                await update.message.reply_text(
+                    f"👑 <b>[ADMIN TEST MODE]</b>\n\n"
+                    f"🏪 Cửa hàng: <b>{store['store_name']}</b>\n"
+                    f"🔢 Mã định danh: <code>#{text}</code>\n\n"
+                    "<i>Tài khoản Admin không bị gắn chết với shop, có thể tự do test hoặc đổi sang shop khác bất cứ lúc nào!</i>",
+                    parse_mode="HTML"
+                )
+            else:
+                await update.message.reply_text(
+                    f"🎉 <b>ĐÃ TÌM THẤY & LIÊN KẾT THÀNH CÔNG!</b>\n\n"
+                    f"🏪 Cửa hàng: <b>{store['store_name']}</b>\n"
+                    f"🔢 Mã định danh: <code>#{text}</code>\n\n"
+                    "🔒 <i>Tài khoản của bạn đã được gắn cố định với cửa hàng này để đảm bảo quyền lợi bảo hành đơn hàng!</i>",
+                    parse_mode="HTML"
+                )
             await show_store_home(update, context, store)
             return
         else:
@@ -457,6 +501,12 @@ async def bottom_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             return
 
     # 2. CÁC NÚT BÀN PHÍM ĐÁY MÀN HÌNH
+    if "Quản Trị" in text or text.lower() == "/admin":
+        if is_admin:
+            from handlers.admin import show_admin_stores_list
+            await show_admin_stores_list(update)
+            return
+
     if "Tìm Cửa Hàng" in text:
         # Nếu khách đã bị khóa
         if not is_admin:
@@ -570,6 +620,13 @@ async def show_store_home(update: Update, context: ContextTypes.DEFAULT_TYPE, st
 
     keyboard.append([InlineKeyboardButton("📦 Tất cả sản phẩm", callback_data=f"cat_{store['id']}_0")])
     keyboard.append([InlineKeyboardButton("🛒 Xem Giỏ hàng", callback_data=f"cart_view_{store['store_slug']}")])
+
+    user = update.effective_user
+    if is_admin_user(user):
+        keyboard.append([
+            InlineKeyboardButton("👑 [ADMIN] Thoát Khỏi Shop Này", callback_data="show_plans"),
+            InlineKeyboardButton("👑 Quản Trị Cửa Hàng", callback_data="admin_list_stores"),
+        ])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     if update.message:
