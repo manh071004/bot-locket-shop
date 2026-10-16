@@ -9,3 +9,5 @@ BOT_USERNAME = os.getenv("BOT_TAO_USERNAME", "Shoppretool_bot")
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8088")
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://user:password@localhost/botstore")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+
+DASHBOARD_URL = os.getenv("DASHBOARD_URL", "http://localhost:5174")
