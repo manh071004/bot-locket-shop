@@ -309,14 +309,14 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             slug = arg[len("store_"):]
             store = await get_store_by_slug(slug)
             if store:
-                if not is_admin:
+                if not is_admin and not owner_store:
                     await set_customer_lock(user.id, store["id"], store["store_slug"])
                 set_user_store(user.id, slug)
-                if is_admin and update.message:
+                if (is_admin or owner_store) and update.message:
                     await update.message.reply_text(
-                        f"👑 <b>[ADMIN TEST MODE]</b>\n"
+                        f"👑 <b>[QUẢN TRỊ VIÊN CỬA HÀNG]</b>\n"
                         f"Đang xem cửa hàng: <b>{store['store_name']}</b> (Mã #{store.get('store_code') or 'N/A'})\n"
-                        f"<i>Tài khoản Admin không bị khóa, bạn có thể tự do test hoặc đổi sang shop khác bất cứ lúc nào!</i>",
+                        f"<i>Tài khoản Quản trị viên không bị khóa vào shop, có thể test hoặc quản lý mọi lúc!</i>",
                         parse_mode="HTML"
                     )
                 await show_store_home(update, context, store)
@@ -334,14 +334,14 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if code_candidate.isdigit() and len(code_candidate) == 4:
             store = await get_store_by_code(code_candidate)
             if store:
-                if not is_admin:
+                if not is_admin and not owner_store:
                     await set_customer_lock(user.id, store["id"], store["store_slug"])
                 set_user_store(user.id, store["store_slug"])
-                if is_admin and update.message:
+                if (is_admin or owner_store) and update.message:
                     await update.message.reply_text(
-                        f"👑 <b>[ADMIN TEST MODE]</b>\n"
+                        f"👑 <b>[QUẢN TRỊ VIÊN CỬA HÀNG]</b>\n"
                         f"Đang xem cửa hàng: <b>{store['store_name']}</b> (Mã #{code_candidate})\n"
-                        f"<i>Tài khoản Admin không bị khóa, bạn có thể tự do test hoặc đổi sang shop khác bất cứ lúc nào!</i>",
+                        f"<i>Tài khoản Quản trị viên không bị khóa, bạn có thể tự do test hoặc đổi shop bất cứ lúc nào!</i>",
                         parse_mode="HTML"
                     )
                 await show_store_home(update, context, store)
@@ -911,12 +911,24 @@ async def bottom_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         if owner_store:
             await show_store_owner_home(update, context, owner_store)
             return
+        else:
+            await update.message.reply_text(
+                "👑 <b>BẢNG QUẢN TRỊ CỬA HÀNG</b>\n\n"
+                "Tài khoản Telegram này hiện chưa được liên kết với cửa hàng nào trên hệ thống.\n\n"
+                f"👉 <b>Cách liên kết:</b> Đăng nhập Web Quản Trị (<a href='{DASHBOARD_URL}'>{DASHBOARD_URL}</a>) > Vào mục <b>Link Bot</b> > Bấm <b>Liên Kết 1 Chạm</b>!\n\n"
+                f"💬 Hoặc liên hệ hỗ trợ: @{ADMIN_CONTACT}",
+                parse_mode="HTML"
+            )
+            return
 
     if "Xem Shop" in text:
         owner_store = await get_store_by_owner_telegram_id(user.id)
         if owner_store:
             set_user_store(user.id, owner_store["store_slug"])
             await show_store_home(update, context, owner_store)
+            return
+        else:
+            await show_service_intro(update)
             return
 
     if "Tìm Cửa Hàng" in text:
@@ -1039,7 +1051,13 @@ async def bottom_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
 
     else:
-        # Kiểm tra khách có gắn với shop nào không
+        # 1. Nếu là Chủ cửa hàng gửi tin nhắn -> Luôn chào mừng và mở Bảng Quản Trị
+        owner_store = await get_store_by_owner_telegram_id(user.id)
+        if owner_store:
+            await show_store_owner_home(update, context, owner_store)
+            return
+
+        # 2. Kiểm tra khách có gắn với shop nào không
         if not is_admin:
             lock = await get_customer_lock(user.id)
             if lock:

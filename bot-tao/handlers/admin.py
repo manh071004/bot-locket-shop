@@ -19,6 +19,7 @@ from db_helper import (
     get_store_by_code,
     is_admin_telegram_id,
     remove_customer_lock,
+    get_store_by_owner_telegram_id,
 )
 from cart_store import set_user_store
 
@@ -105,16 +106,25 @@ async def admin_auth_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def admin_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Lệnh /admin hoặc /admin_stores"""
+    """Lệnh /admin hoặc /admin_stores: Mở bảng điều khiển cho SuperAdmin hoặc Chủ shop"""
     user = update.effective_user
-    if not is_admin_user(user):
-        await update.message.reply_text(
-            f"⛔ <b>Bạn không có quyền truy cập khu vực Quản trị viên.</b>\n"
-            f"Vui lòng liên hệ Admin tối cao: @{ADMIN_CONTACT}",
-            parse_mode="HTML"
-        )
+    if is_admin_user(user):
+        await show_admin_stores_list(update)
         return
-    await show_admin_stores_list(update)
+
+    # Kiểm tra nếu là Chủ cửa hàng
+    owner_store = await get_store_by_owner_telegram_id(user.id)
+    if owner_store:
+        from handlers.start import show_store_owner_home
+        await show_store_owner_home(update, context, owner_store)
+        return
+
+    await update.message.reply_text(
+        f"⛔ <b>Bạn chưa liên kết tài khoản Quản trị viên cửa hàng.</b>\n\n"
+        f"👉 Nếu bạn là chủ shop, vui lòng vào Web Quản Trị > mục <b>Link Bot</b> để bấm <b>Liên Kết 1 Chạm</b> với Telegram này!\n\n"
+        f"💬 Hoặc liên hệ hỗ trợ: @{ADMIN_CONTACT}",
+        parse_mode="HTML"
+    )
 
 
 async def show_admin_stores_list(update: Update):

@@ -35,7 +35,7 @@ def create_application() -> Application:
     app.add_handler(CommandHandler("admin_auth", admin_auth_handler))
 
     # Callback query handlers (chọn gói, chọn sản phẩm, giỏ hàng, thanh toán, duyệt đơn)
-    app.add_handler(CallbackQueryHandler(plan_callback_handler, pattern=r"^(buy_plan_|paid_check_|show_plans)"))
+    app.add_handler(CallbackQueryHandler(plan_callback_handler, pattern=r"^(buy_plan_|paid_check_|show_plans|owner_|support_store_|reply_cust_|btn_|link_admin_acc_|admin_test_|admin_quick_link)"))
     app.add_handler(CallbackQueryHandler(catalog_handler, pattern=r"^cat_"))
     app.add_handler(CallbackQueryHandler(product_detail_handler, pattern=r"^prod_"))
     app.add_handler(CallbackQueryHandler(cart_action_handler, pattern=r"^cart_"))
